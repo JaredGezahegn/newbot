@@ -1,20 +1,19 @@
 from pathlib import Path
-
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
 env = os.environ.get
-BASE_DIR = Path(__file__).resolve().parent.parent
 
+BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = env("SECRET_KEY")
 BOT_TOKEN = env("BOT_TOKEN")
 WEB_HOOK_URL = env("WEB_HOOK_URL")
 
-DEBUG = True
+DEBUG = False  # Vercel = always production
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]  # Allow Vercel deployment
 
 
 INSTALLED_APPS = [
@@ -59,22 +58,23 @@ TEMPLATES = [
 
 WSGI_APPLICATION = "core.wsgi.application"
 
+
+# -----------------------------
+# 🔥 FORCE POSTGRES ON VERCEL
+# -----------------------------
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
-    },
-    "pro": {  # Change this on to default on production
-        "ENGINE": "django.db.backends.postgresql_psycopg2",
+        "ENGINE": "django.db.backends.postgresql",
         "NAME": env("PGDATABASE"),
         "USER": env("PGUSER"),
         "PASSWORD": env("PGPASSWORD"),
         "HOST": env("PGHOST"),
         "PORT": "5432",
         "OPTIONS": {"sslmode": "require"},
-        "DISABLE_SERVER_SIDE_CURSORS": True,
-    },
+    }
 }
+
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         "NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator",
@@ -92,14 +92,15 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 LANGUAGE_CODE = "en-us"
-
 TIME_ZONE = "UTC"
-
 USE_I18N = True
-
 USE_TZ = True
 
-STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles", "static")
+
+# -----------------------------
+# 🔥 STATIC FILES (Vercel Safe)
+# -----------------------------
 STATIC_URL = "/static/"
+STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
