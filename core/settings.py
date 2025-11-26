@@ -13,7 +13,7 @@ WEB_HOOK_URL = env("WEB_HOOK_URL")
 
 DEBUG = False  # Vercel = always production
 
-ALLOWED_HOSTS = ["*"]  # Allow Vercel deployment
+ALLOWED_HOSTS = ["https://newbot-drab.vercel.app/"]  # Allow Vercel deployment
 
 
 INSTALLED_APPS = [
