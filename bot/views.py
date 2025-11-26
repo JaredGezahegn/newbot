@@ -1,20 +1,21 @@
-import json, telebot
-from django.http.response import JsonResponse
-
-from django.views.decorators.csrf import csrf_exempt
-from django.views.decorators.http import require_http_methods
-
-from .bot import bot
-
-
-@require_http_methods(["POST"])
 @csrf_exempt
+@require_http_methods(["POST"])
 def webhook(request, *args, **kwargs):
-    data = request.body
-    update = telebot.types.Update.de_json(json.loads(data))
-    bot.process_new_updates([update])
-    return JsonResponse("Ok", safe=False)
+    try:
+        raw_data = request.body.decode("utf-8")
 
+        if not raw_data:
+            return JsonResponse({"status": "ignored-empty"}, status=200)
 
-def test(request):
-    return JsonResponse("Bot Deployed Succesfully on /webhook/", safe=False)
+        data = json.loads(raw_data)
+
+        update = telebot.types.Update.de_json(data)
+
+        bot.process_new_updates([update])
+
+        return JsonResponse({"status": "ok"}, status=200)
+
+    except Exception as e:
+        # Never return 400 to Telegram — it will disable your webhook
+        print("Webhook error:", e)
+        return JsonResponse({"status": "ok"}, status=200)
