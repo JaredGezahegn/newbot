@@ -143,30 +143,42 @@ def get_comment_or_error(comment_id):
 @bot.message_handler(commands=['start'])
 def start_command(message: Message):
     """Handle /start command"""
+    telegram_id = message.from_user.id
     user_name = message.from_user.first_name
+    
+    # Auto-register user if not already registered
+    try:
+        user, error = get_user_or_error(telegram_id)
+        if error:
+            # User doesn't exist, register them
+            username = message.from_user.username
+            from bot.utils import retry_db_operation
+            
+            @retry_db_operation(max_retries=3)
+            def register_with_retry():
+                return register_user(telegram_id, user_name, username)
+            
+            user = register_with_retry()
+    except Exception as e:
+        logger.error(f"Error in start command: {e}", exc_info=True)
+    
     welcome_text = f"""
 👋 <b>Hello {user_name}!</b>
 
 Welcome to the Anonymous Confession Bot!
 
-Available commands:
-/register - Register with the bot
-/confess - Submit a confession
-/comment [id] - Add a comment to a confession
-/comments [id] - View comments on a confession
-/anonymous_on - Enable anonymous mode
-/anonymous_off - Disable anonymous mode
-/profile - View your profile and stats
-/myconfessions - View your confessions
-/mycomments - View your comments
-/help - Get help
-
-Admin commands:
-/pending - View pending confessions
-/stats - View system statistics
-/delete - Delete a confession
+Use the buttons below to interact with the bot, or type /help for more information.
     """
-    bot.reply_to(message, welcome_text)
+    
+    # Create keyboard with main buttons
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add(
+        KeyboardButton("✍️ Confess"),
+        KeyboardButton("👤 Profile"),
+        KeyboardButton("ℹ️ Help")
+    )
+    
+    bot.reply_to(message, welcome_text, reply_markup=keyboard)
 
 
 @bot.message_handler(commands=['help'])
@@ -175,16 +187,19 @@ def help_command(message: Message):
     help_text = """
 <b>📚 Help Menu</b>
 
-<b>User Commands:</b>
-• /register - Register with the bot to start using it
-• /confess - Submit an anonymous or attributed confession
+<b>Main Buttons:</b>
+• ✍️ Confess - Submit a new confession
+• 👤 Profile - View your profile and manage settings
+• ℹ️ Help - Show this help message
+
+<b>Profile Menu:</b>
+• 📝 My Confessions - View all your confessions
+• 💬 My Comments - View all your comments
+• 🎭 Toggle Anonymity - Switch between anonymous and named posts
+
+<b>Text Commands:</b>
 • /comment [id] - Add a comment to a confession
 • /comments [id] - View all comments on a confession
-• /anonymous_on - Enable anonymous mode (default)
-• /anonymous_off - Disable anonymous mode (show your name)
-• /profile - View your profile statistics
-• /myconfessions - View all your confessions and their status
-• /mycomments - View all your comments
 
 <b>Admin Commands:</b>
 • /pending - View all pending confessions
@@ -192,10 +207,22 @@ def help_command(message: Message):
 • /delete [id] - Delete a confession by ID
 
 <b>About Anonymity:</b>
-When anonymous mode is ON, your confessions will be posted without your name.
-When anonymous mode is OFF, your confessions will show your name.
+When anonymous mode is ON ✅, your confessions will be posted without your name.
+When anonymous mode is OFF ❌, your confessions will show your name.
+
+<b>Channel Interaction:</b>
+When a confession is approved, it's posted to the channel with a "View / Add Comments" button. Click it to see and add comments!
     """
-    bot.reply_to(message, help_text)
+    
+    # Create keyboard with main buttons
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add(
+        KeyboardButton("✍️ Confess"),
+        KeyboardButton("👤 Profile"),
+        KeyboardButton("ℹ️ Help")
+    )
+    
+    bot.reply_to(message, help_text, reply_markup=keyboard)
 
 
 @bot.message_handler(commands=['register'])
@@ -206,8 +233,14 @@ def register_command(message: Message):
         first_name = message.from_user.first_name or "User"
         username = message.from_user.username
         
-        # Register the user
-        user = register_user(telegram_id, first_name, username)
+        # Register the user with retry logic
+        from bot.utils import retry_db_operation
+        
+        @retry_db_operation(max_retries=3)
+        def register_with_retry():
+            return register_user(telegram_id, first_name, username)
+        
+        user = register_with_retry()
         
         response_text = f"""
 ✅ <b>Registration Successful!</b>
@@ -215,27 +248,45 @@ def register_command(message: Message):
 Welcome, {first_name}! Your profile has been created.
 
 <b>Your Settings:</b>
-• Anonymous Mode: {'ON' if user.is_anonymous_mode else 'OFF'}
+• Anonymous Mode: {'ON ✅' if user.is_anonymous_mode else 'OFF ❌'}
 • Total Confessions: {user.total_confessions}
 • Total Comments: {user.total_comments}
 • Impact Points: {user.impact_points}
 
-Use /confess to submit your first confession!
-Use /anonymous_on or /anonymous_off to change your anonymity setting.
+Use the buttons below to get started!
         """
         
-        bot.reply_to(message, response_text)
+        # Create keyboard with main buttons
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        keyboard.add(
+            KeyboardButton("✍️ Confess"),
+            KeyboardButton("👤 Profile"),
+            KeyboardButton("ℹ️ Help")
+        )
+        
+        bot.reply_to(message, response_text, reply_markup=keyboard)
         
     except IntegrityError as e:
         # User already exists
         logger.warning(f"Duplicate registration attempt for telegram_id {message.from_user.id}: {e}")
-        error_text = "ℹ️ You are already registered! Use /profile to view your profile."
-        bot.reply_to(message, error_text)
+        error_text = "ℹ️ You are already registered! Use the Profile button to view your profile."
+        
+        # Show main menu
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        keyboard.add(
+            KeyboardButton("✍️ Confess"),
+            KeyboardButton("👤 Profile"),
+            KeyboardButton("ℹ️ Help")
+        )
+        
+        bot.reply_to(message, error_text, reply_markup=keyboard)
     except DatabaseError as e:
-        error_text = handle_database_error(e, "registration")
+        logger.error(f"Database error during registration: {e}", exc_info=True)
+        error_text = f"❌ Database connection error. Please try again in a moment.\n\nError details: {str(e)[:100]}"
         bot.reply_to(message, error_text)
     except Exception as e:
-        error_text = handle_generic_error(e, "registration")
+        logger.error(f"Unexpected error during registration: {e}", exc_info=True)
+        error_text = f"❌ An unexpected error occurred. Please try again.\n\nError: {str(e)[:100]}"
         bot.reply_to(message, error_text)
 
 
@@ -811,6 +862,127 @@ def cancel_command(message: Message):
             bot.reply_to(message, "✅ Operation cancelled.")
     else:
         bot.reply_to(message, "ℹ️ No active operation to cancel.")
+
+
+# Keyboard button handlers
+@bot.message_handler(func=lambda message: message.text == "✍️ Confess")
+def button_confess(message: Message):
+    """Handle Confess button"""
+    confess_command(message)
+
+
+@bot.message_handler(func=lambda message: message.text == "👤 Profile")
+def button_profile(message: Message):
+    """Handle Profile button - show profile menu"""
+    telegram_id = message.from_user.id
+    
+    # Check if user is registered
+    user, error = get_user_or_error(telegram_id)
+    if error:
+        bot.reply_to(message, error)
+        return
+    
+    # Get user stats
+    try:
+        stats = get_user_stats(user)
+        
+        profile_text = f"""
+👤 <b>Your Profile</b>
+
+<b>Name:</b> {user.first_name}
+<b>Username:</b> @{user.username if user.username else 'N/A'}
+<b>Anonymous Mode:</b> {'ON ✅' if user.is_anonymous_mode else 'OFF ❌'}
+
+<b>Statistics:</b>
+• Approved Confessions: {stats['total_confessions']}
+• Total Comments: {stats['total_comments']}
+• Impact Points: {stats['impact_points']}
+• Community Acceptance Score: {stats['acceptance_score']}%
+
+Use the buttons below to manage your profile:
+        """
+        
+        # Create profile submenu keyboard
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        keyboard.add(
+            KeyboardButton("📝 My Confessions"),
+            KeyboardButton("💬 My Comments")
+        )
+        keyboard.add(
+            KeyboardButton("🎭 Toggle Anonymity"),
+            KeyboardButton("🔙 Back to Menu")
+        )
+        
+        bot.reply_to(message, profile_text, reply_markup=keyboard)
+        
+    except Exception as e:
+        error_text = handle_generic_error(e, "fetching profile")
+        bot.reply_to(message, error_text)
+
+
+@bot.message_handler(func=lambda message: message.text == "ℹ️ Help")
+def button_help(message: Message):
+    """Handle Help button"""
+    help_command(message)
+
+
+@bot.message_handler(func=lambda message: message.text == "🔙 Back to Menu")
+def button_back_to_menu(message: Message):
+    """Handle Back to Menu button"""
+    # Show main menu
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add(
+        KeyboardButton("✍️ Confess"),
+        KeyboardButton("👤 Profile"),
+        KeyboardButton("ℹ️ Help")
+    )
+    
+    bot.reply_to(message, "Main Menu:", reply_markup=keyboard)
+
+
+@bot.message_handler(func=lambda message: message.text == "📝 My Confessions")
+def button_my_confessions(message: Message):
+    """Handle My Confessions button"""
+    myconfessions_command(message)
+
+
+@bot.message_handler(func=lambda message: message.text == "💬 My Comments")
+def button_my_comments(message: Message):
+    """Handle My Comments button"""
+    mycomments_command(message)
+
+
+@bot.message_handler(func=lambda message: message.text == "🎭 Toggle Anonymity")
+def button_toggle_anonymity(message: Message):
+    """Handle Toggle Anonymity button"""
+    telegram_id = message.from_user.id
+    
+    try:
+        # Get the user
+        user, error = get_user_or_error(telegram_id)
+        if error:
+            bot.reply_to(message, error)
+            return
+        
+        # Toggle anonymity
+        new_state = not user.is_anonymous_mode
+        user = toggle_anonymity(user, new_state)
+        
+        status = "ON ✅" if new_state else "OFF ❌"
+        response_text = f"""
+🎭 <b>Anonymity Mode {status}</b>
+
+Your future confessions will be posted {'anonymously without your name' if new_state else 'with your name'}.
+        """
+        
+        bot.reply_to(message, response_text)
+        
+    except DatabaseError as e:
+        error_text = handle_database_error(e, "toggling anonymity")
+        bot.reply_to(message, error_text)
+    except Exception as e:
+        error_text = handle_generic_error(e, "toggling anonymity")
+        bot.reply_to(message, error_text)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('confirm_confession_'))
