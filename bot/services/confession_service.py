@@ -149,7 +149,7 @@ def publish_to_channel(confession, bot_instance):
         author += f" (@{confession.user.username})"
     
     message_text = f"""
-📝 <b>Confession #{confession.id}</b>
+📝 <b>Confession {confession.id}</b>
 
 {confession.text}
 

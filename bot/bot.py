@@ -526,7 +526,7 @@ def pending_command(message: Message):
             if confession.user.username:
                 author += f" (@{confession.user.username})"
             
-            response_text += f"<b>ID #{confession.id}</b>\n"
+            response_text += f"<b>ID {confession.id}</b>\n"
             response_text += f"From: {author}\n"
             response_text += f"Anonymous: {'Yes' if confession.is_anonymous else 'No'}\n"
             response_text += f"Preview: {text_preview}\n"
@@ -632,7 +632,7 @@ def delete_command(message: Message):
         response_text = f"""
 ✅ <b>Confession Deleted</b>
 
-Confession ID #{confession_id} has been deleted from the database.
+Confession ID {confession_id} has been deleted from the database.
 
 <b>Preview:</b>
 {confession_preview}
@@ -699,7 +699,7 @@ def comment_command(message: Message):
         response_text = f"""
 💬 <b>Add a Comment</b>
 
-<b>Confession #{confession_id}:</b>
+<b>Confession {confession_id}:</b>
 {confession_preview}
 
 Please type your comment below. You can write up to 1000 characters.
@@ -754,13 +754,13 @@ def comments_command(message: Message):
         comments_data = get_comments(confession, page=1, page_size=10)
         
         if not comments_data['comments']:
-            bot.reply_to(message, f"💬 No comments yet on confession #{confession_id}. Be the first to comment using /comment {confession_id}")
+            bot.reply_to(message, f"💬 No comments yet on confession {confession_id}. Be the first to comment using /comment {confession_id}")
             return
         
         # Build response text
         confession_preview = confession.text[:100] + "..." if len(confession.text) > 100 else confession.text
         
-        response_text = f"<b>💬 Comments on Confession #{confession_id}</b>\n\n"
+        response_text = f"<b>💬 Comments on Confession {confession_id}</b>\n\n"
         response_text += f"<i>{confession_preview}</i>\n\n"
         response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
         
@@ -849,7 +849,7 @@ def handle_confession_confirmation(call: CallbackQuery):
                 success_text = f"""
 ✅ <b>Confession Submitted Successfully!</b>
 
-Your confession (ID: #{confession.id}) has been submitted and is now pending admin review.
+Your confession (ID: {confession.id}) has been submitted and is now pending admin review.
 
 You will be notified once it's reviewed.
 
@@ -975,7 +975,7 @@ def handle_approve_confession(call: CallbackQuery):
         updated_text = f"""
 ✅ <b>Confession Approved</b>
 
-<b>ID:</b> #{confession.id}
+<b>ID:</b> {confession.id}
 <b>From:</b> {author}
 <b>Approved by:</b> {call.from_user.first_name}
 <b>Approved at:</b> {confession.reviewed_at.strftime('%Y-%m-%d %H:%M UTC')}
@@ -1064,7 +1064,7 @@ def handle_reject_confession(call: CallbackQuery):
         updated_text = f"""
 ❌ <b>Confession Rejected</b>
 
-<b>ID:</b> #{confession.id}
+<b>ID:</b> {confession.id}
 <b>From:</b> {author}
 <b>Rejected by:</b> {call.from_user.first_name}
 <b>Rejected at:</b> {confession.reviewed_at.strftime('%Y-%m-%d %H:%M UTC')}
@@ -1125,7 +1125,7 @@ def handle_view_comments(call: CallbackQuery):
         # Build response text
         confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
         
-        response_text = f"<b>💬 Comments on Confession #{confession_id}</b>\n\n"
+        response_text = f"<b>💬 Comments on Confession {confession_id}</b>\n\n"
         response_text += f"<i>{confession_preview}</i>\n\n"
         
         if not comments_data['comments']:
@@ -1221,7 +1221,7 @@ def handle_comments_pagination(call: CallbackQuery):
         # Build response text
         confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
         
-        response_text = f"<b>💬 Comments on Confession #{confession_id}</b>\n\n"
+        response_text = f"<b>💬 Comments on Confession {confession_id}</b>\n\n"
         response_text += f"<i>{confession_preview}</i>\n\n"
         
         if not comments_data['comments']:
@@ -1315,7 +1315,7 @@ def handle_add_comment_button(call: CallbackQuery):
         response_text = f"""
 💬 <b>Add a Comment</b>
 
-<b>Confession #{confession_id}:</b>
+<b>Confession {confession_id}:</b>
 {confession_preview}
 
 Please type your comment below. You can write up to 1000 characters.
@@ -1455,8 +1455,8 @@ def handle_report_comment(call: CallbackQuery):
             admin_notification = f"""
 🚩 <b>Comment Reported Multiple Times</b>
 
-<b>Comment ID:</b> #{comment.id}
-<b>Confession ID:</b> #{comment.confession.id}
+<b>Comment ID:</b> {comment.id}
+<b>Confession ID:</b> {comment.confession.id}
 <b>Report Count:</b> {comment.report_count}
 <b>Author:</b> {comment.user.first_name}
 
@@ -1662,7 +1662,7 @@ Do you want to submit this confession?
                 success_text = f"""
 ✅ <b>Comment Posted Successfully!</b>
 
-Your comment has been added to confession #{confession_id}.
+Your comment has been added to confession {confession_id}.
 
 <b>Your comment:</b>
 {comment_text[:200]}{'...' if len(comment_text) > 200 else ''}

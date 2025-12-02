@@ -33,7 +33,7 @@ def notify_admins_new_confession(confession, bot_instance):
     message_text = f"""
 🔔 <b>New Confession Pending Review</b>
 
-<b>ID:</b> #{confession.id}
+<b>ID:</b> {confession.id}
 <b>From:</b> {author}
 <b>Submitted:</b> {confession.created_at.strftime('%Y-%m-%d %H:%M UTC')}
 
@@ -84,7 +84,7 @@ def notify_user_confession_status(confession, status, bot_instance):
         message_text = f"""
 ✅ <b>Confession Approved</b>
 
-Your confession (ID: #{confession.id}) has been approved and published to the channel!
+Your confession (ID: {confession.id}) has been approved and published to the channel!
 
 You can view it and see comments from the community.
 """
@@ -92,7 +92,7 @@ You can view it and see comments from the community.
         message_text = f"""
 ❌ <b>Confession Rejected</b>
 
-Your confession (ID: #{confession.id}) was not approved for publication.
+Your confession (ID: {confession.id}) was not approved for publication.
 
 If you have questions, please contact an administrator.
 """
