@@ -152,8 +152,8 @@ Welcome to the Anonymous Confession Bot!
 Available commands:
 /register - Register with the bot
 /confess - Submit a confession
-/comment <id> - Add a comment to a confession
-/comments <id> - View comments on a confession
+/comment [id] - Add a comment to a confession
+/comments [id] - View comments on a confession
 /anonymous_on - Enable anonymous mode
 /anonymous_off - Disable anonymous mode
 /profile - View your profile and stats
@@ -178,8 +178,8 @@ def help_command(message: Message):
 <b>User Commands:</b>
 • /register - Register with the bot to start using it
 • /confess - Submit an anonymous or attributed confession
-• /comment <id> - Add a comment to a confession
-• /comments <id> - View all comments on a confession
+• /comment [id] - Add a comment to a confession
+• /comments [id] - View all comments on a confession
 • /anonymous_on - Enable anonymous mode (default)
 • /anonymous_off - Disable anonymous mode (show your name)
 • /profile - View your profile statistics
@@ -189,7 +189,7 @@ def help_command(message: Message):
 <b>Admin Commands:</b>
 • /pending - View all pending confessions
 • /stats - View system statistics
-• /delete <id> - Delete a confession by ID
+• /delete [id] - Delete a confession by ID
 
 <b>About Anonymity:</b>
 When anonymous mode is ON, your confessions will be posted without your name.
