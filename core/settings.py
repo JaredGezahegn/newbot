@@ -15,7 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = get_env("SECRET_KEY")
 BOT_TOKEN = get_env("BOT_TOKEN")
-WEB_HOOK_URL = get_env("WEB_HOOK_URL")
+WEB_HOOK_URL = os.environ.get("WEB_HOOK_URL", "https://newbot-drab.vercel.app/webhook/")
 
 DEBUG = False  # Vercel = always production
 
