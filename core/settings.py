@@ -3,13 +3,19 @@ from dotenv import load_dotenv
 import os
 
 load_dotenv()
-env = os.environ.get
+
+def get_env(key, default=None):
+    """Get environment variable with validation"""
+    value = os.environ.get(key, default)
+    if value is None:
+        raise ValueError(f"Missing required environment variable: {key}")
+    return value
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = env("SECRET_KEY")
-BOT_TOKEN = env("BOT_TOKEN")
-WEB_HOOK_URL = env("WEB_HOOK_URL")
+SECRET_KEY = get_env("SECRET_KEY")
+BOT_TOKEN = get_env("BOT_TOKEN")
+WEB_HOOK_URL = get_env("WEB_HOOK_URL")
 
 DEBUG = False  # Vercel = always production
 
@@ -19,7 +25,11 @@ ALLOWED_HOSTS = [
     "localhost",
     "127.0.0.1"
 ]
-  # Allow Vercel deployment
+
+CSRF_TRUSTED_ORIGINS = [
+    "https://newbot-drab.vercel.app",
+    "https://*.vercel.app",
+]
 
 
 INSTALLED_APPS = [
@@ -71,10 +81,10 @@ WSGI_APPLICATION = "core.wsgi.application"
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
-        "NAME": env("PGDATABASE"),
-        "USER": env("PGUSER"),
-        "PASSWORD": env("PGPASSWORD"),
-        "HOST": env("PGHOST"),
+        "NAME": get_env("PGDATABASE"),
+        "USER": get_env("PGUSER"),
+        "PASSWORD": get_env("PGPASSWORD"),
+        "HOST": get_env("PGHOST"),
         "PORT": "5432",
         "OPTIONS": {"sslmode": "require"},
     }
