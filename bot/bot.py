@@ -162,6 +162,89 @@ def start_command(message: Message):
     except Exception as e:
         logger.error(f"Error in start command: {e}", exc_info=True)
     
+    # Check if this is a deep link (e.g., from channel button)
+    command_parts = message.text.split()
+    if len(command_parts) > 1 and command_parts[1].startswith('comments_'):
+        # Extract confession ID from deep link
+        try:
+            confession_id = int(command_parts[1].split('_')[1])
+            logger.info(f"Deep link to comments for confession {confession_id}")
+            
+            # Get the confession
+            confession, error = get_confession_or_error(confession_id)
+            if error:
+                bot.reply_to(message, error)
+                return
+            
+            # Show comments directly
+            from bot.services.comment_service import get_comments
+            comments_data = get_comments(confession, page=1, page_size=5)
+            
+            # Build response text
+            confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
+            
+            response_text = f"<b>💬 Comments on Confession {confession_id}</b>\n\n"
+            response_text += f"<i>{confession_preview}</i>\n\n"
+            
+            if not comments_data['comments']:
+                response_text += "No comments yet. Be the first to comment!\n\n"
+            else:
+                response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
+                
+                for comment in comments_data['comments']:
+                    commenter_name = comment.user.first_name
+                    comment_text = comment.text[:100] + "..." if len(comment.text) > 100 else comment.text
+                    
+                    response_text += f"<b>{comment.id}</b> by {commenter_name}\n"
+                    response_text += f"{comment_text}\n"
+                    response_text += f"👍 {comment.like_count} | 👎 {comment.dislike_count} | 🚩 {comment.report_count}\n\n"
+            
+            # Create inline keyboard with action buttons
+            inline_keyboard = InlineKeyboardMarkup()
+            
+            # Add comment button
+            inline_keyboard.row(
+                InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
+            )
+            
+            # Add pagination buttons if needed
+            if comments_data['total_pages'] > 1:
+                buttons = []
+                if comments_data['has_previous']:
+                    buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
+                if comments_data['has_next']:
+                    buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
+                if buttons:
+                    inline_keyboard.row(*buttons)
+            
+            # Create main menu keyboard
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+            keyboard.add(
+                KeyboardButton("✍️ Confess"),
+                KeyboardButton("👤 Profile"),
+                KeyboardButton("ℹ️ Help")
+            )
+            
+            bot.send_message(
+                message.chat.id,
+                response_text,
+                parse_mode='HTML',
+                reply_markup=inline_keyboard
+            )
+            
+            # Also send the main keyboard
+            bot.send_message(
+                message.chat.id,
+                "Use the buttons below to navigate:",
+                reply_markup=keyboard
+            )
+            
+            return
+            
+        except Exception as e:
+            logger.error(f"Error handling deep link: {e}", exc_info=True)
+            # Fall through to normal start message
+    
     welcome_text = f"""
 👋 <b>Hello {user_name}!</b>
 

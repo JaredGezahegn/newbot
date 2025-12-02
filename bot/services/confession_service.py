@@ -157,10 +157,18 @@ def publish_to_channel(confession, bot_instance):
 """
     
     # Create inline keyboard with "View / Add Comments" button
+    # Use URL button to open bot in private chat with deep link
     from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
     
+    # Get bot username from settings
+    bot_username = getattr(settings, 'BOT_USERNAME', 'your_bot')
+    
     keyboard = InlineKeyboardMarkup()
-    keyboard.add(InlineKeyboardButton("View / Add Comments", callback_data=f"view_comments_{confession.id}"))
+    # URL button that opens bot in private chat with start parameter
+    keyboard.add(InlineKeyboardButton(
+        "💬 View / Add Comments", 
+        url=f"https://t.me/{bot_username}?start=comments_{confession.id}"
+    ))
     
     # Send to channel
     sent_message = bot_instance.send_message(

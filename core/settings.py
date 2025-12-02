@@ -15,6 +15,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = get_env("SECRET_KEY")
 BOT_TOKEN = get_env("BOT_TOKEN")
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "your_bot")  # Bot username without @
 WEB_HOOK_URL = os.environ.get("WEB_HOOK_URL", "https://newbot-drab.vercel.app/webhook/")
 CHANNEL_ID = os.environ.get("CHANNEL_ID")
 ADMINS = [int(admin_id.strip()) for admin_id in os.environ.get("ADMINS", "").split(",") if admin_id.strip()]
