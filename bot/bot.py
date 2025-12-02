@@ -1501,9 +1501,13 @@ def handle_view_comments(call: CallbackQuery):
             
             # Show each comment
             for idx, comment in enumerate(comments_data['comments'], 1):
-                commenter_name = comment.user.first_name
-                if comment.user.username:
-                    commenter_name += f" (@{comment.user.username})"
+                # Check if commenter wants to be anonymous
+                if comment.user.is_anonymous_mode:
+                    commenter_name = "Anonymous"
+                else:
+                    commenter_name = comment.user.first_name
+                    if comment.user.username:
+                        commenter_name += f" (@{comment.user.username})"
                 
                 response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
                 response_text += f"{comment.text}\n\n"
@@ -1607,9 +1611,13 @@ def handle_comments_pagination(call: CallbackQuery):
             
             # Show each comment
             for idx, comment in enumerate(comments_data['comments'], 1):
-                commenter_name = comment.user.first_name
-                if comment.user.username:
-                    commenter_name += f" (@{comment.user.username})"
+                # Check if commenter wants to be anonymous
+                if comment.user.is_anonymous_mode:
+                    commenter_name = "Anonymous"
+                else:
+                    commenter_name = comment.user.first_name
+                    if comment.user.username:
+                        commenter_name += f" (@{comment.user.username})"
                 
                 response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
                 response_text += f"{comment.text}\n\n"
