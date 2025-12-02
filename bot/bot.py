@@ -187,7 +187,7 @@ def rebuild_comment_view(comment, chat_id, message_id):
     keyboard.row(
         InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
         InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
-        InlineKeyboardButton(f"� {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+        InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
         InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
     )
     
@@ -1515,13 +1515,12 @@ def handle_view_comments(call: CallbackQuery):
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
         
-        # Add like/dislike/report buttons for the current comment
-        if comments_data['comments']:
-            comment = comments_data['comments'][0]
+        # Add like/dislike/report buttons for EACH comment
+        for comment in comments_data['comments']:
             keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
                 InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
-                InlineKeyboardButton(f"� {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
                 InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
             )
         
@@ -1625,13 +1624,12 @@ def handle_comments_pagination(call: CallbackQuery):
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
         
-        # Add like/dislike/report buttons for the current comment
-        if comments_data['comments']:
-            comment = comments_data['comments'][0]
+        # Add like/dislike/report buttons for EACH comment
+        for comment in comments_data['comments']:
             keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
                 InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
-                InlineKeyboardButton(f"� {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
                 InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
             )
         
