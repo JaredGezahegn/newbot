@@ -185,9 +185,9 @@ def rebuild_comment_view(comment, chat_id, message_id):
     
     # Reaction buttons
     keyboard.row(
-        InlineKeyboardButton(f"👍 Like", callback_data=f"like_comment_{comment.id}"),
-        InlineKeyboardButton(f"👎 Dislike", callback_data=f"dislike_comment_{comment.id}"),
-        InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
+        InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
+        InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
+        InlineKeyboardButton(f"� {coomment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
     )
     
     # Navigation buttons
@@ -1514,9 +1514,9 @@ def handle_view_comments(call: CallbackQuery):
         if comments_data['comments']:
             comment = comments_data['comments'][0]
             keyboard.row(
-                InlineKeyboardButton(f"👍 Like", callback_data=f"like_comment_{comment.id}"),
-                InlineKeyboardButton(f"👎 Dislike", callback_data=f"dislike_comment_{comment.id}"),
-                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
+                InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
+                InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
+                InlineKeyboardButton(f"� {ecomment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
             )
         
         # Add navigation buttons
@@ -1619,9 +1619,9 @@ def handle_comments_pagination(call: CallbackQuery):
         if comments_data['comments']:
             comment = comments_data['comments'][0]
             keyboard.row(
-                InlineKeyboardButton(f"👍 Like", callback_data=f"like_comment_{comment.id}"),
-                InlineKeyboardButton(f"👎 Dislike", callback_data=f"dislike_comment_{comment.id}"),
-                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
+                InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
+                InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
+                InlineKeyboardButton(f"� {coomment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
             )
         
         # Add navigation buttons
