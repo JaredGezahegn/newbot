@@ -282,19 +282,30 @@ def start_command(message: Message):
             # Create inline keyboard with action buttons
             inline_keyboard = InlineKeyboardMarkup()
             
-            # Add like/dislike/report buttons for EACH comment
-            for comment in comments_data['comments']:
-                inline_keyboard.row(
-                    InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                    InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
-                    InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                    InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
-                )
-            
-            # Add comment button
+            # Add comment button FIRST (under confession)
             inline_keyboard.row(
                 InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
             )
+            
+            # Add separator if there are comments
+            if comments_data['comments']:
+                inline_keyboard.row(
+                    InlineKeyboardButton("━━━ Comment Actions ━━━", callback_data="separator")
+                )
+            
+            # Add like/dislike/report buttons for EACH comment
+            for comment in comments_data['comments']:
+                # Comment identifier
+                inline_keyboard.row(
+                    InlineKeyboardButton(f"Comment #{comment.id}", callback_data=f"info_{comment.id}")
+                )
+                # Reaction buttons for this comment
+                inline_keyboard.row(
+                    InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
+                    InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                    InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}"),
+                    InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
+                )
             
             # Add pagination buttons if needed
             if comments_data['total_pages'] > 1:
@@ -1523,17 +1534,34 @@ def handle_view_comments(call: CallbackQuery):
                         commenter_name += f" (@{comment.user.username})"
                 
                 response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
-                response_text += f"{comment.text}\n\n"
+                response_text += f"{comment.text}\n"
+                response_text += f"👍 {comment.like_count}  👎 {comment.dislike_count}  🚩 {comment.report_count}\n\n"
         
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
         
+        # Add comment button FIRST (under confession)
+        keyboard.row(
+            InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
+        )
+        
+        # Add separator if there are comments
+        if comments_data['comments']:
+            keyboard.row(
+                InlineKeyboardButton("━━━ Comment Actions ━━━", callback_data="separator")
+            )
+        
         # Add like/dislike/report buttons for EACH comment
         for comment in comments_data['comments']:
+            # Comment identifier
+            keyboard.row(
+                InlineKeyboardButton(f"Comment #{comment.id}", callback_data=f"info_{comment.id}")
+            )
+            # Reaction buttons for this comment
             keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
                 InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}"),
                 InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
             )
         
@@ -1545,11 +1573,6 @@ def handle_view_comments(call: CallbackQuery):
             nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
         if nav_buttons:
             keyboard.row(*nav_buttons)
-        
-        # Add comment button
-        keyboard.row(
-            InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
-        )
         
         # Send or edit message
         try:
@@ -1632,17 +1655,34 @@ def handle_comments_pagination(call: CallbackQuery):
                         commenter_name += f" (@{comment.user.username})"
                 
                 response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
-                response_text += f"{comment.text}\n\n"
+                response_text += f"{comment.text}\n"
+                response_text += f"👍 {comment.like_count}  👎 {comment.dislike_count}  🚩 {comment.report_count}\n\n"
         
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
         
+        # Add comment button FIRST (under confession)
+        keyboard.row(
+            InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
+        )
+        
+        # Add separator if there are comments
+        if comments_data['comments']:
+            keyboard.row(
+                InlineKeyboardButton("━━━ Comment Actions ━━━", callback_data="separator")
+            )
+        
         # Add like/dislike/report buttons for EACH comment
         for comment in comments_data['comments']:
+            # Comment identifier
+            keyboard.row(
+                InlineKeyboardButton(f"Comment #{comment.id}", callback_data=f"info_{comment.id}")
+            )
+            # Reaction buttons for this comment
             keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
                 InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}"),
                 InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
             )
         
@@ -1654,11 +1694,6 @@ def handle_comments_pagination(call: CallbackQuery):
             nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
         if nav_buttons:
             keyboard.row(*nav_buttons)
-        
-        # Add comment button
-        keyboard.row(
-            InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
-        )
         
         # Edit message
         bot.edit_message_text(
