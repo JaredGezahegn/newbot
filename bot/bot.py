@@ -849,7 +849,7 @@ def handle_confession_confirmation(call: CallbackQuery):
                 success_text = f"""
 ✅ <b>Confession Submitted Successfully!</b>
 
-Your confession (ID: {confession.id}) has been submitted and is now pending admin review.
+Your confession with ID {confession.id} has been submitted and is now pending admin review.
 
 You will be notified once it's reviewed.
 
@@ -975,7 +975,7 @@ def handle_approve_confession(call: CallbackQuery):
         updated_text = f"""
 ✅ <b>Confession Approved</b>
 
-<b>ID:</b> {confession.id}
+<b>Confession ID {confession.id}</b>
 <b>From:</b> {author}
 <b>Approved by:</b> {call.from_user.first_name}
 <b>Approved at:</b> {confession.reviewed_at.strftime('%Y-%m-%d %H:%M UTC')}
@@ -1064,7 +1064,7 @@ def handle_reject_confession(call: CallbackQuery):
         updated_text = f"""
 ❌ <b>Confession Rejected</b>
 
-<b>ID:</b> {confession.id}
+<b>Confession ID {confession.id}</b>
 <b>From:</b> {author}
 <b>Rejected by:</b> {call.from_user.first_name}
 <b>Rejected at:</b> {confession.reviewed_at.strftime('%Y-%m-%d %H:%M UTC')}
@@ -1455,8 +1455,8 @@ def handle_report_comment(call: CallbackQuery):
             admin_notification = f"""
 🚩 <b>Comment Reported Multiple Times</b>
 
-<b>Comment ID:</b> {comment.id}
-<b>Confession ID:</b> {comment.confession.id}
+<b>Comment ID {comment.id}</b>
+<b>Confession ID {comment.confession.id}</b>
 <b>Report Count:</b> {comment.report_count}
 <b>Author:</b> {comment.user.first_name}
 
