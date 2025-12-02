@@ -139,6 +139,81 @@ def get_comment_or_error(comment_id):
         return None, "❌ A temporary database issue occurred. Please try again in a moment."
 
 
+def rebuild_comment_view(comment, chat_id, message_id):
+    """
+    Rebuild and update the comment view message with current data.
+    Shows one comment at a time with its reaction buttons.
+    
+    Args:
+        comment: Comment instance to display
+        chat_id: Telegram chat ID
+        message_id: Message ID to edit
+    """
+    from bot.services.comment_service import get_comments
+    
+    # Refresh comment data
+    comment.refresh_from_db()
+    confession = comment.confession
+    
+    # Find which page this comment is on
+    all_comments = Comment.objects.filter(
+        confession=confession,
+        parent_comment=None
+    ).order_by('-created_at')
+    
+    comment_index = list(all_comments.values_list('id', flat=True)).index(comment.id)
+    current_page = comment_index + 1
+    total_comments = all_comments.count()
+    
+    # Build response text
+    confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
+    
+    response_text = f"<b>💬 Comments on Confession {confession.id}</b>\n\n"
+    response_text += f"<i>{confession_preview}</i>\n\n"
+    response_text += f"<b>Comment {current_page} of {total_comments}</b>\n\n"
+    
+    commenter_name = comment.user.first_name
+    if comment.user.username:
+        commenter_name += f" (@{comment.user.username})"
+    
+    response_text += f"<b>By:</b> {commenter_name}\n"
+    response_text += f"<b>Comment:</b>\n{comment.text}\n\n"
+    response_text += f"👍 {comment.like_count}  |  👎 {comment.dislike_count}  |  🚩 {comment.report_count}\n"
+    
+    # Create inline keyboard
+    keyboard = InlineKeyboardMarkup()
+    
+    # Reaction buttons
+    keyboard.row(
+        InlineKeyboardButton(f"👍 Like", callback_data=f"like_comment_{comment.id}"),
+        InlineKeyboardButton(f"👎 Dislike", callback_data=f"dislike_comment_{comment.id}"),
+        InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
+    )
+    
+    # Navigation buttons
+    nav_buttons = []
+    if current_page > 1:
+        nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession.id}_{current_page - 1}"))
+    if current_page < total_comments:
+        nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession.id}_{current_page + 1}"))
+    if nav_buttons:
+        keyboard.row(*nav_buttons)
+    
+    # Add comment button
+    keyboard.row(
+        InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession.id}")
+    )
+    
+    # Update message
+    bot.edit_message_text(
+        response_text,
+        chat_id,
+        message_id,
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
+
+
 # Message Handlers
 @bot.message_handler(commands=['start'])
 def start_command(message: Message):
@@ -592,16 +667,17 @@ def confess_command(message: Message):
         response_text = f"""
 📝 <b>Submit a Confession</b>
 
-Your confession will be posted <b>{anonymity_status}</b>.
+Your confession will be posted <b>{anonymity_status} on @dduvents</b>.
 
-Please type your confession below. You can write up to 4096 characters.
-
-<i>To change your anonymity setting, use /anonymous_on or /anonymous_off before submitting.</i>
-
-Type /cancel to cancel this confession.
+Please type your confession below.
         """
         
-        bot.reply_to(message, response_text)
+        # Create keyboard with Cancel button
+        from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, one_time_keyboard=True)
+        keyboard.add(KeyboardButton("❌ Cancel"))
+        
+        bot.reply_to(message, response_text, reply_markup=keyboard)
         
     except DatabaseError as e:
         error_text = handle_database_error(e, "starting confession")
@@ -1118,6 +1194,19 @@ You will be notified once it's reviewed.
                     call.message.message_id,
                     parse_mode='HTML'
                 )
+                
+                # Restore main menu keyboard
+                from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+                keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+                keyboard.row(KeyboardButton("📝 Confess"), KeyboardButton("👤 Profile"))
+                keyboard.row(KeyboardButton("💬 My Comments"), KeyboardButton("❓ Help"))
+                
+                bot.send_message(
+                    call.message.chat.id,
+                    "You can now submit another confession or use the menu below.",
+                    reply_markup=keyboard
+                )
+                
                 bot.answer_callback_query(call.id, "✅ Confession submitted!")
                 
             except ValueError as e:
@@ -1158,6 +1247,19 @@ You will be notified once it's reviewed.
                 call.message.chat.id,
                 call.message.message_id
             )
+            
+            # Restore main menu keyboard
+            from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+            keyboard.row(KeyboardButton("📝 Confess"), KeyboardButton("👤 Profile"))
+            keyboard.row(KeyboardButton("💬 My Comments"), KeyboardButton("❓ Help"))
+            
+            bot.send_message(
+                call.message.chat.id,
+                "You can submit a new confession or use the menu below.",
+                reply_markup=keyboard
+            )
+            
             bot.answer_callback_query(call.id, "Cancelled")
         
     except DatabaseError as e:
@@ -1358,7 +1460,7 @@ def handle_reject_confession(call: CallbackQuery):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('view_comments_'))
 def handle_view_comments(call: CallbackQuery):
-    """Handle 'View / Add Comments' button callback"""
+    """Handle 'View / Add Comments' button callback - shows comments one at a time"""
     try:
         telegram_id = call.from_user.id
         
@@ -1383,7 +1485,7 @@ def handle_view_comments(call: CallbackQuery):
         
         # Get comments (first page)
         from bot.services.comment_service import get_comments
-        comments_data = get_comments(confession, page=1, page_size=5)
+        comments_data = get_comments(confession, page=1, page_size=1)  # Show 1 comment at a time
         
         # Build response text
         confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
@@ -1394,42 +1496,42 @@ def handle_view_comments(call: CallbackQuery):
         if not comments_data['comments']:
             response_text += "No comments yet. Be the first to comment!\n\n"
         else:
-            response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
+            # Show single comment with full details
+            comment = comments_data['comments'][0]
+            commenter_name = comment.user.first_name
+            if comment.user.username:ent.user.first_name
+                commenter_name += f" (@{comment.user.username})"
             
-            for comment in comments_data['comments']:
-                commenter_name = comment.user.first_name
-                comment_text = comment.text[:100] + "..." if len(comment.text) > 100 else comment.text
-                
-                response_text += f"<b>#{comment.id}</b> by {commenter_name}\n"
-                response_text += f"{comment_text}\n"
-                response_text += f"👍 {comment.like_count} | 👎 {comment.dislike_count} | 🚩 {comment.report_count}\n\n"
+            response_text += f"<b>Comment {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
+            response_text += f"<b>By:</b> {commenter_name}\n"
+            response_text += f"<b>Comment:</b>\n{comment.text}\n\n"
+            response_text += f"👍 {comment.like_count}  |  👎 {comment.dislike_count}  |  🚩 {comment.report_count}\n"
         
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
+        
+        # Add like/dislike/report buttons for the current comment
+        if comments_data['comments']:
+            comment = comments_data['comments'][0]
+            keyboard.row(
+                InlineKeyboardButton(f"👍 Like", callback_data=f"like_comment_{comment.id}"),
+                InlineKeyboardButton(f"👎 Dislike", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
+            )
+        
+        # Add navigation buttons
+        nav_buttons = []
+        if comments_data['has_previous']:
+            nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
+        if comments_data['has_next']:
+            nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['curren] + 1}"))
+        if nav_buttons:
+            keyboard.row(*nav_buttons)
         
         # Add comment button
         keyboard.row(
             InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
         )
-        
-        # Add like/dislike/report buttons for each comment
-        if comments_data['comments']:
-            for comment in comments_data['comments']:
-                keyboard.row(
-                    InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                    InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                    InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
-                )
-        
-        # Add pagination buttons if needed
-        if comments_data['total_pages'] > 1:
-            buttons = []
-            if comments_data['has_previous']:
-                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
-            if comments_data['has_next']:
-                buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
-            if buttons:
-                keyboard.row(*buttons)
         
         # Send or edit message
         try:
@@ -1463,7 +1565,7 @@ def handle_view_comments(call: CallbackQuery):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('comments_page_'))
 def handle_comments_pagination(call: CallbackQuery):
-    """Handle pagination button callbacks for comments"""
+    """Handle pagination button callbacks for comments - shows one comment at a time"""
     try:
         telegram_id = call.from_user.id
         
@@ -1486,9 +1588,10 @@ def handle_comments_pagination(call: CallbackQuery):
             bot.answer_callback_query(call.id, "❌ Confession not found.")
             return
         
-        # Get comments for the requested page
+        # Get comments for the requested page (1 comment at 
         from bot.services.comment_service import get_comments
-        comments_data = get_comments(confession, page=page, page_size=5)
+        from bot.services.comment_service import get_comments
+        comments_data = get_comments(confession, page=page, page_size=1)
         
         # Build response text
         confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
@@ -1499,42 +1602,42 @@ def handle_comments_pagination(call: CallbackQuery):
         if not comments_data['comments']:
             response_text += "No comments on this page.\n\n"
         else:
-            response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
+            # Show single comment with full details
+            comment = comments_data['comments'][0]
+            commenter_name = comment.user.first_name
+            if comment.user.username:
+                commenter_name += f" (@{comment.user.username})"
             
-            for comment in comments_data['comments']:
-                commenter_name = comment.user.first_name
-                comment_text = comment.text[:100] + "..." if len(comment.text) > 100 else comment.text
-                
-                response_text += f"<b>#{comment.id}</b> by {commenter_name}\n"
-                response_text += f"{comment_text}\n"
-                response_text += f"👍 {comment.like_count} | 👎 {comment.dislike_count} | 🚩 {comment.report_count}\n\n"
+            response_text += f"<b>Comment {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
+            response_text += f"<b>By:</b> {commenter_name}\n"
+            response_text += f"<b>Comment:</b>\n{comment.text}\n\n"
+            response_text += f"👍 {comment.like_count}  |  👎 {comment.dislike_count}  |  🚩 {comment.report_count}\n"
         
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
+        
+        # Add like/dislike/report buttons for the current comment
+        if comments_data['comments']:
+            comment = comments_data['comments'][0]
+            keyboard.row(
+                InlineKeyboardButton(f"👍 Like", callback_data=f"like_comment_{comment.id}"),
+                InlineKeyboardButton(f"👎 Dislike", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
+            )
+        
+        # Add navigation buttons
+        nav_buttons = []
+        if comments_data['has_previous']:
+            nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
+        if comments_data['has_next']:
+            nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
+        if nav_buttons:
+            keyboard.row(*nav_buttons)
         
         # Add comment button
         keyboard.row(
             InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
         )
-        
-        # Add like/dislike/report buttons for each comment
-        if comments_data['comments']:
-            for comment in comments_data['comments']:
-                keyboard.row(
-                    InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                    InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                    InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}")
-                )
-        
-        # Add pagination buttons if needed
-        if comments_data['total_pages'] > 1:
-            buttons = []
-            if comments_data['has_previous']:
-                buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
-            if comments_data['has_next']:
-                buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
-            if buttons:
-                keyboard.row(*buttons)
         
         # Edit message
         bot.edit_message_text(
@@ -1550,7 +1653,6 @@ def handle_comments_pagination(call: CallbackQuery):
     except Exception as e:
         bot.answer_callback_query(call.id, "❌ An error occurred.")
         print(f"Error in handle_comments_pagination: {e}")
-
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('add_comment_'))
 def handle_add_comment_button(call: CallbackQuery):
@@ -1654,60 +1756,9 @@ def handle_like_comment(call: CallbackQuery):
         from bot.services.comment_service import add_reaction
         add_reaction(user, comment, 'like')
         
-        # Refresh the comment to get updated counts
-        comment.refresh_from_db()
-        
         # Update the message with new counts
         try:
-            # Get confession and comments data
-            confession = comment.confession
-            from bot.services.comment_service import get_comments
-            
-            # Try to extract page number from message or default to 1
-            page = 1
-            comments_data = get_comments(confession, page=page, page_size=5)
-            
-            # Rebuild the message
-            confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
-            response_text = f"<b>💬 Comments on Confession {confession.id}</b>\n\n"
-            response_text += f"<i>{confession_preview}</i>\n\n"
-            response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
-            
-            for c in comments_data['comments']:
-                commenter_name = c.user.first_name
-                comment_text = c.text[:100] + "..." if len(c.text) > 100 else c.text
-                response_text += f"<b>#{c.id}</b> by {commenter_name}\n"
-                response_text += f"{comment_text}\n"
-                response_text += f"👍 {c.like_count} | 👎 {c.dislike_count} | 🚩 {c.report_count}\n\n"
-            
-            # Rebuild keyboard
-            keyboard = InlineKeyboardMarkup()
-            keyboard.row(InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession.id}"))
-            
-            for c in comments_data['comments']:
-                keyboard.row(
-                    InlineKeyboardButton(f"👍 {c.like_count}", callback_data=f"like_comment_{c.id}"),
-                    InlineKeyboardButton(f"👎 {c.dislike_count}", callback_data=f"dislike_comment_{c.id}"),
-                    InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{c.id}")
-                )
-            
-            # Add pagination if needed
-            if comments_data['total_pages'] > 1:
-                buttons = []
-                if comments_data['has_previous']:
-                    buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession.id}_{comments_data['current_page'] - 1}"))
-                if comments_data['has_next']:
-                    buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"comments_page_{confession.id}_{comments_data['current_page'] + 1}"))
-                if buttons:
-                    keyboard.row(*buttons)
-            
-            bot.edit_message_text(
-                response_text,
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode='HTML',
-                reply_markup=keyboard
-            )
+            rebuild_comment_view(comment, call.message.chat.id, call.message.message_id)
         except Exception as update_error:
             logger.warning(f"Could not update message after like: {update_error}")
         
@@ -1760,60 +1811,9 @@ def handle_dislike_comment(call: CallbackQuery):
         from bot.services.comment_service import add_reaction
         add_reaction(user, comment, 'dislike')
         
-        # Refresh the comment to get updated counts
-        comment.refresh_from_db()
-        
         # Update the message with new counts
         try:
-            # Get confession and comments data
-            confession = comment.confession
-            from bot.services.comment_service import get_comments
-            
-            # Try to extract page number from message or default to 1
-            page = 1
-            comments_data = get_comments(confession, page=page, page_size=5)
-            
-            # Rebuild the message
-            confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
-            response_text = f"<b>💬 Comments on Confession {confession.id}</b>\n\n"
-            response_text += f"<i>{confession_preview}</i>\n\n"
-            response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
-            
-            for c in comments_data['comments']:
-                commenter_name = c.user.first_name
-                comment_text = c.text[:100] + "..." if len(c.text) > 100 else c.text
-                response_text += f"<b>#{c.id}</b> by {commenter_name}\n"
-                response_text += f"{comment_text}\n"
-                response_text += f"👍 {c.like_count} | 👎 {c.dislike_count} | 🚩 {c.report_count}\n\n"
-            
-            # Rebuild keyboard
-            keyboard = InlineKeyboardMarkup()
-            keyboard.row(InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession.id}"))
-            
-            for c in comments_data['comments']:
-                keyboard.row(
-                    InlineKeyboardButton(f"👍 {c.like_count}", callback_data=f"like_comment_{c.id}"),
-                    InlineKeyboardButton(f"👎 {c.dislike_count}", callback_data=f"dislike_comment_{c.id}"),
-                    InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{c.id}")
-                )
-            
-            # Add pagination if needed
-            if comments_data['total_pages'] > 1:
-                buttons = []
-                if comments_data['has_previous']:
-                    buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession.id}_{comments_data['current_page'] - 1}"))
-                if comments_data['has_next']:
-                    buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"comments_page_{confession.id}_{comments_data['current_page'] + 1}"))
-                if buttons:
-                    keyboard.row(*buttons)
-            
-            bot.edit_message_text(
-                response_text,
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode='HTML',
-                reply_markup=keyboard
-            )
+            rebuild_comment_view(comment, call.message.chat.id, call.message.message_id)
         except Exception as update_error:
             logger.warning(f"Could not update message after dislike: {update_error}")
         
@@ -1896,55 +1896,7 @@ Please review this comment.
         
         # Update the message with new counts
         try:
-            # Get confession and comments data
-            confession = comment.confession
-            from bot.services.comment_service import get_comments
-            
-            # Try to extract page number from message or default to 1
-            page = 1
-            comments_data = get_comments(confession, page=page, page_size=5)
-            
-            # Rebuild the message
-            confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
-            response_text = f"<b>💬 Comments on Confession {confession.id}</b>\n\n"
-            response_text += f"<i>{confession_preview}</i>\n\n"
-            response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
-            
-            for c in comments_data['comments']:
-                commenter_name = c.user.first_name
-                comment_text = c.text[:100] + "..." if len(c.text) > 100 else c.text
-                response_text += f"<b>#{c.id}</b> by {commenter_name}\n"
-                response_text += f"{comment_text}\n"
-                response_text += f"👍 {c.like_count} | 👎 {c.dislike_count} | 🚩 {c.report_count}\n\n"
-            
-            # Rebuild keyboard
-            keyboard = InlineKeyboardMarkup()
-            keyboard.row(InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession.id}"))
-            
-            for c in comments_data['comments']:
-                keyboard.row(
-                    InlineKeyboardButton(f"👍 {c.like_count}", callback_data=f"like_comment_{c.id}"),
-                    InlineKeyboardButton(f"👎 {c.dislike_count}", callback_data=f"dislike_comment_{c.id}"),
-                    InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{c.id}")
-                )
-            
-            # Add pagination if needed
-            if comments_data['total_pages'] > 1:
-                buttons = []
-                if comments_data['has_previous']:
-                    buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession.id}_{comments_data['current_page'] - 1}"))
-                if comments_data['has_next']:
-                    buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"comments_page_{confession.id}_{comments_data['current_page'] + 1}"))
-                if buttons:
-                    keyboard.row(*buttons)
-            
-            bot.edit_message_text(
-                response_text,
-                call.message.chat.id,
-                call.message.message_id,
-                parse_mode='HTML',
-                reply_markup=keyboard
-            )
+            rebuild_comment_view(comment, call.message.chat.id, call.message.message_id)
         except Exception as update_error:
             logger.warning(f"Could not update message after report: {update_error}")
         
@@ -2042,11 +1994,24 @@ def handle_unknown_command(message: Message):
         state = user_states[telegram_id].get('state')
         
         if state == 'waiting_confession_text':
+            # Check if user clicked Cancel button
+            if message.text == "❌ Cancel":
+                del user_states[telegram_id]
+                
+                # Show main menu keyboard
+                from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+                keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
+                keyboard.row(KeyboardButton("📝 Confess"), KeyboardButton("👤 Profile"))
+                keyboard.row(KeyboardButton("💬 My Comments"), KeyboardButton("❓ Help"))
+                
+                bot.reply_to(message, "❌ Confession submission cancelled.", reply_markup=keyboard)
+                return
+            
             # User is submitting confession text
             confession_text = message.text
             
             if not confession_text or len(confession_text.strip()) == 0:
-                bot.reply_to(message, "❌ Confession cannot be empty. Please type your confession or use /cancel to cancel.")
+                bot.reply_to(message, "❌ Confession cannot be empty. Please type your confession or use the Cancel button.")
                 return
             
             # Check character limit
