@@ -87,8 +87,12 @@ DATABASES = {
         "USER": get_env("PGUSER"),
         "PASSWORD": get_env("PGPASSWORD"),
         "HOST": get_env("PGHOST"),
-        "PORT": "5432",
-        "OPTIONS": {"sslmode": "require"},
+        "PORT": os.environ.get("PGPORT", "5432"),  # Support both direct (5432) and pooler (6543)
+        "OPTIONS": {
+            "sslmode": "require",
+            "connect_timeout": 10,
+        },
+        "CONN_MAX_AGE": 0,  # Don't persist connections in serverless
     }
 }
 
