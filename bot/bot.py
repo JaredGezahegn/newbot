@@ -1092,11 +1092,15 @@ def handle_approve_confession(call: CallbackQuery):
     """Handle approve button callback for admin moderation"""
     try:
         telegram_id = call.from_user.id
+        logger.info(f"Approve button clicked by user {telegram_id}")
         
         # Check admin permission
         if not is_admin(telegram_id):
+            logger.warning(f"Non-admin user {telegram_id} tried to approve confession")
             bot.answer_callback_query(call.id, "❌ You don't have permission to perform this action.")
             return
+        
+        logger.info(f"Admin {telegram_id} is approving confession")
         
         # Extract and validate confession ID from callback data
         try:
@@ -1181,11 +1185,15 @@ def handle_reject_confession(call: CallbackQuery):
     """Handle reject button callback for admin moderation"""
     try:
         telegram_id = call.from_user.id
+        logger.info(f"Reject button clicked by user {telegram_id}")
         
         # Check admin permission
         if not is_admin(telegram_id):
+            logger.warning(f"Non-admin user {telegram_id} tried to reject confession")
             bot.answer_callback_query(call.id, "❌ You don't have permission to perform this action.")
             return
+        
+        logger.info(f"Admin {telegram_id} is rejecting confession")
         
         # Extract and validate confession ID from callback data
         try:
