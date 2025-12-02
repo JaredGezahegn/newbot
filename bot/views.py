@@ -16,6 +16,18 @@ def webhook(request, *args, **kwargs):
             return JsonResponse({"status": "ignored-empty"}, status=200)
 
         data = json.loads(raw_data)
+        
+        # Log the update type for debugging
+        update_type = "unknown"
+        if "message" in data:
+            update_type = "message"
+        elif "callback_query" in data:
+            update_type = "callback_query"
+            print(f"Callback query data: {data.get('callback_query', {}).get('data', 'N/A')}")
+        elif "edited_message" in data:
+            update_type = "edited_message"
+        
+        print(f"Webhook received update type: {update_type}")
 
         update = telebot.types.Update.de_json(data)
 
@@ -26,6 +38,8 @@ def webhook(request, *args, **kwargs):
     except Exception as e:
         # Never return 400 to Telegram — it will disable your webhook
         print("Webhook error:", e)
+        import traceback
+        traceback.print_exc()
         return JsonResponse({"status": "ok"}, status=200)
 
 

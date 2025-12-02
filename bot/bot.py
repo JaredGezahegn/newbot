@@ -1545,6 +1545,17 @@ Type /cancel to cancel.
         logger.error(f"Error in handle_reply_comment: {e}")
 
 
+@bot.callback_query_handler(func=lambda call: True)
+def handle_unknown_callback(call: CallbackQuery):
+    """Handle unknown callback queries"""
+    logger.warning(f"Unknown callback query received: {call.data}")
+    bot.answer_callback_query(
+        call.id,
+        "❌ This button action is not recognized. Please try again or use /help for assistance.",
+        show_alert=True
+    )
+
+
 @bot.message_handler(func=lambda message: True)
 def handle_unknown_command(message: Message):
     """Handle unknown commands and messages"""
