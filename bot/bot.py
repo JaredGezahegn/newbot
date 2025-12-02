@@ -187,7 +187,8 @@ def rebuild_comment_view(comment, chat_id, message_id):
     keyboard.row(
         InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
         InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
-        InlineKeyboardButton(f"� {coomment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
+        InlineKeyboardButton(f"� {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+        InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
     )
     
     # Navigation buttons
@@ -1485,7 +1486,7 @@ def handle_view_comments(call: CallbackQuery):
         
         # Get comments (first page)
         from bot.services.comment_service import get_comments
-        comments_data = get_comments(confession, page=1, page_size=1)  # Show 1 comment at a time
+        comments_data = get_comments(confession, page=1, page_size=5)  # Show multiple comments
         
         # Build response text
         confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
@@ -1496,16 +1497,16 @@ def handle_view_comments(call: CallbackQuery):
         if not comments_data['comments']:
             response_text += "No comments yet. Be the first to comment!\n\n"
         else:
-            # Show single comment with full details
-            comment = comments_data['comments'][0]
-            commenter_name = comment.user.first_name
-            if comment.user.username:
-                commenter_name += f" (@{comment.user.username})"
+            response_text += f"<b>Page {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
             
-            response_text += f"<b>Comment {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
-            response_text += f"<b>By:</b> {commenter_name}\n"
-            response_text += f"<b>Comment:</b>\n{comment.text}\n\n"
-            response_text += f"👍 {comment.like_count}  |  👎 {comment.dislike_count}  |  🚩 {comment.report_count}\n"
+            # Show each comment
+            for idx, comment in enumerate(comments_data['comments'], 1):
+                commenter_name = comment.user.first_name
+                if comment.user.username:
+                    commenter_name += f" (@{comment.user.username})"
+                
+                response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
+                response_text += f"{comment.text}\n\n"
         
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
@@ -1516,7 +1517,8 @@ def handle_view_comments(call: CallbackQuery):
             keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
                 InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
-                InlineKeyboardButton(f"� {ecomment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
+                InlineKeyboardButton(f"� {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
             )
         
         # Add navigation buttons
@@ -1601,16 +1603,16 @@ def handle_comments_pagination(call: CallbackQuery):
         if not comments_data['comments']:
             response_text += "No comments on this page.\n\n"
         else:
-            # Show single comment with full details
-            comment = comments_data['comments'][0]
-            commenter_name = comment.user.first_name
-            if comment.user.username:
-                commenter_name += f" (@{comment.user.username})"
+            response_text += f"<b>Page {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
             
-            response_text += f"<b>Comment {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
-            response_text += f"<b>By:</b> {commenter_name}\n"
-            response_text += f"<b>Comment:</b>\n{comment.text}\n\n"
-            response_text += f"👍 {comment.like_count}  |  👎 {comment.dislike_count}  |  🚩 {comment.report_count}\n"
+            # Show each comment
+            for idx, comment in enumerate(comments_data['comments'], 1):
+                commenter_name = comment.user.first_name
+                if comment.user.username:
+                    commenter_name += f" (@{comment.user.username})"
+                
+                response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
+                response_text += f"{comment.text}\n\n"
         
         # Create inline keyboard with action buttons
         keyboard = InlineKeyboardMarkup()
@@ -1621,7 +1623,8 @@ def handle_comments_pagination(call: CallbackQuery):
             keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
                 InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
-                InlineKeyboardButton(f"� {coomment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
+                InlineKeyboardButton(f"� {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
             )
         
         # Add navigation buttons
