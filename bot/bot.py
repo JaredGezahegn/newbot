@@ -1499,7 +1499,7 @@ def handle_view_comments(call: CallbackQuery):
             # Show single comment with full details
             comment = comments_data['comments'][0]
             commenter_name = comment.user.first_name
-            if comment.user.username:ent.user.first_name
+            if comment.user.username:
                 commenter_name += f" (@{comment.user.username})"
             
             response_text += f"<b>Comment {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
@@ -1524,7 +1524,7 @@ def handle_view_comments(call: CallbackQuery):
         if comments_data['has_previous']:
             nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
         if comments_data['has_next']:
-            nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['curren] + 1}"))
+            nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
         if nav_buttons:
             keyboard.row(*nav_buttons)
         
@@ -1588,8 +1588,7 @@ def handle_comments_pagination(call: CallbackQuery):
             bot.answer_callback_query(call.id, "❌ Confession not found.")
             return
         
-        # Get comments for the requested page (1 comment at 
-        from bot.services.comment_service import get_comments
+        # Get comments for the requested page (1 comment at a time)
         from bot.services.comment_service import get_comments
         comments_data = get_comments(confession, page=page, page_size=1)
         
