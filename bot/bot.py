@@ -265,18 +265,31 @@ def start_command(message: Message):
             if not comments_data['comments']:
                 response_text += "No comments yet. Be the first to comment!\n\n"
             else:
-                response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
+                response_text += f"<b>Page {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
                 
                 for comment in comments_data['comments']:
-                    commenter_name = comment.user.first_name
-                    comment_text = comment.text[:100] + "..." if len(comment.text) > 100 else comment.text
+                    # Check if commenter wants to be anonymous
+                    if comment.user.is_anonymous_mode:
+                        commenter_name = "Anonymous"
+                    else:
+                        commenter_name = comment.user.first_name
+                        if comment.user.username:
+                            commenter_name += f" (@{comment.user.username})"
                     
-                    response_text += f"<b>{comment.id}</b> by {commenter_name}\n"
-                    response_text += f"{comment_text}\n"
-                    response_text += f"👍 {comment.like_count} | 👎 {comment.dislike_count} | 🚩 {comment.report_count}\n\n"
+                    response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
+                    response_text += f"{comment.text}\n\n"
             
             # Create inline keyboard with action buttons
             inline_keyboard = InlineKeyboardMarkup()
+            
+            # Add like/dislike/report buttons for EACH comment
+            for comment in comments_data['comments']:
+                inline_keyboard.row(
+                    InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
+                    InlineKeyboardButton(f"⚠️ Report", callback_data=f"report_comment_{comment.id}"),
+                    InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                    InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
+                )
             
             # Add comment button
             inline_keyboard.row(
