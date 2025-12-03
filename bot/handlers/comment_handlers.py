@@ -91,6 +91,26 @@ def send_comment_message(bot, chat_id, comment):
     )
 
 
+def update_comment_message(bot, chat_id, message_id, comment):
+    """Update an existing comment message with fresh data (e.g., after reactions)"""
+    # Refresh comment from database
+    comment.refresh_from_db()
+    
+    comment_text = build_comment_text(comment)
+    comment_keyboard = build_comment_keyboard(comment)
+    
+    try:
+        bot.edit_message_text(
+            comment_text,
+            chat_id,
+            message_id,
+            parse_mode='HTML',
+            reply_markup=comment_keyboard
+        )
+    except Exception as e:
+        logger.error(f"Error updating comment message: {e}")
+
+
 def send_page_header(bot, chat_id, confession_id, page, total_pages, has_prev, has_next):
     """
     Send page header:

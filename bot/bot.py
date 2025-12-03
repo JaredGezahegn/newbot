@@ -17,7 +17,7 @@ from bot.services.user_service import register_user, toggle_anonymity, get_user_
 from bot.services.confession_service import create_confession
 from bot.services.notification_service import notify_admins_new_confession, notify_user_confession_status
 from bot.models import User, Confession, Comment
-from bot.handlers import handle_view_comments, handle_comments_pagination, show_comments_for_confession
+from bot.handlers import handle_view_comments, handle_comments_pagination, show_comments_for_confession, update_comment_message
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -1536,7 +1536,7 @@ def handle_like_comment(call: CallbackQuery):
         
         # Update the message with new counts
         try:
-            rebuild_comment_view(comment, call.message.chat.id, call.message.message_id)
+            update_comment_message(bot, call.message.chat.id, call.message.message_id, comment)
         except Exception as update_error:
             logger.warning(f"Could not update message after like: {update_error}")
         
@@ -1591,7 +1591,7 @@ def handle_dislike_comment(call: CallbackQuery):
         
         # Update the message with new counts
         try:
-            rebuild_comment_view(comment, call.message.chat.id, call.message.message_id)
+            update_comment_message(bot, call.message.chat.id, call.message.message_id, comment)
         except Exception as update_error:
             logger.warning(f"Could not update message after dislike: {update_error}")
         
@@ -1674,7 +1674,7 @@ Please review this comment.
         
         # Update the message with new counts
         try:
-            rebuild_comment_view(comment, call.message.chat.id, call.message.message_id)
+            update_comment_message(bot, call.message.chat.id, call.message.message_id, comment)
         except Exception as update_error:
             logger.warning(f"Could not update message after report: {update_error}")
         

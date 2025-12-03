@@ -8,6 +8,7 @@ from .comment_handlers import (
     build_comment_text,
     build_comment_keyboard,
     send_comment_message,
+    update_comment_message,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
     'build_comment_text',
     'build_comment_keyboard',
     'send_comment_message',
+    'update_comment_message',
 ]
