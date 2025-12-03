@@ -74,7 +74,9 @@ class Reaction(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('comment', 'user')
+        # Allow multiple reactions per user per comment, but not duplicate types
+        unique_together = ('comment', 'user', 'reaction_type')
         indexes = [
             models.Index(fields=['comment', 'user']),
+            models.Index(fields=['comment', 'user', 'reaction_type']),
         ]

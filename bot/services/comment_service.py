@@ -78,7 +78,10 @@ def get_comments(confession, page=1, page_size=10):
 def add_reaction(user, comment, reaction_type):
     """
     Add or update a reaction to a comment.
-    Enforces one reaction per user per comment.
+    
+    Rules:
+    - Like and Dislike are mutually exclusive (toggle each other)
+    - Report is independent (can report AND like/dislike)
     
     Args:
         user: User instance
@@ -96,39 +99,68 @@ def add_reaction(user, comment, reaction_type):
         raise ValueError(f"Invalid reaction type: {reaction_type}. Must be one of {valid_reactions}")
     
     with transaction.atomic():
-        # Get existing reaction if any
-        existing_reaction = Reaction.objects.filter(comment=comment, user=user).first()
-        
-        if existing_reaction:
-            # Update existing reaction
-            old_type = existing_reaction.reaction_type
+        if reaction_type in ['like', 'dislike']:
+            # Like/Dislike logic: mutually exclusive
+            # Check if user already has this exact reaction
+            existing_same = Reaction.objects.filter(
+                comment=comment, 
+                user=user, 
+                reaction_type=reaction_type
+            ).first()
             
-            # Decrement old reaction count
-            if old_type == 'like':
-                comment.like_count = max(0, comment.like_count - 1)
-            elif old_type == 'dislike':
-                comment.dislike_count = max(0, comment.dislike_count - 1)
-            elif old_type == 'report':
-                comment.report_count = max(0, comment.report_count - 1)
+            if existing_same:
+                # Already has this reaction, do nothing
+                return existing_same
             
-            # Update reaction type
-            existing_reaction.reaction_type = reaction_type
-            existing_reaction.save(update_fields=['reaction_type'])
-            reaction = existing_reaction
-        else:
+            # Check for opposite reaction (like vs dislike)
+            opposite_type = 'dislike' if reaction_type == 'like' else 'like'
+            existing_opposite = Reaction.objects.filter(
+                comment=comment,
+                user=user,
+                reaction_type=opposite_type
+            ).first()
+            
+            if existing_opposite:
+                # Remove opposite reaction
+                if opposite_type == 'like':
+                    comment.like_count = max(0, comment.like_count - 1)
+                else:
+                    comment.dislike_count = max(0, comment.dislike_count - 1)
+                existing_opposite.delete()
+            
             # Create new reaction
             reaction = Reaction.objects.create(
                 comment=comment,
                 user=user,
                 reaction_type=reaction_type
             )
-        
-        # Increment new reaction count
-        if reaction_type == 'like':
-            comment.like_count += 1
-        elif reaction_type == 'dislike':
-            comment.dislike_count += 1
+            
+            # Increment count
+            if reaction_type == 'like':
+                comment.like_count += 1
+            else:
+                comment.dislike_count += 1
+                
         elif reaction_type == 'report':
+            # Report logic: independent of like/dislike
+            # Check if already reported
+            existing_report = Reaction.objects.filter(
+                comment=comment,
+                user=user,
+                reaction_type='report'
+            ).first()
+            
+            if existing_report:
+                # Already reported, do nothing
+                return existing_report
+            
+            # Create new report reaction (doesn't affect like/dislike)
+            reaction = Reaction.objects.create(
+                comment=comment,
+                user=user,
+                reaction_type='report'
+            )
+            
             comment.report_count += 1
         
         comment.save(update_fields=['like_count', 'dislike_count', 'report_count'])
