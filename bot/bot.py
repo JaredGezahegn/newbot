@@ -1485,7 +1485,7 @@ def handle_reject_confession(call: CallbackQuery):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('view_comments_'))
 def handle_view_comments(call: CallbackQuery):
-    """Handle 'View / Add Comments' button callback - shows comments one at a time"""
+    """Handle 'View / Add Comments' button - sends each comment as separate message"""
     try:
         telegram_id = call.from_user.id
         
@@ -1508,91 +1508,85 @@ def handle_view_comments(call: CallbackQuery):
             bot.answer_callback_query(call.id, "❌ Confession not found.")
             return
         
-        # Get comments (first page)
+        # Get comments
         from bot.services.comment_service import get_comments
-        comments_data = get_comments(confession, page=1, page_size=5)  # Show multiple comments
+        comments_data = get_comments(confession, page=1, page_size=10)
         
-        # Build response text
-        confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
+        # Edit the main post to show "Comments below"
+        confession_text = confession.text[:500] if len(confession.text) > 500 else confession.text
         
-        response_text = f"<b>💬 Comments on Confession {confession_id}</b>\n\n"
-        response_text += f"<i>{confession_preview}</i>\n\n"
+        main_post_text = f"{confession_text}\n\n"
         
-        if not comments_data['comments']:
-            response_text += "No comments yet. Be the first to comment!\n\n"
+        if comments_data['comments']:
+            main_post_text += f"💬 <b>Comments below ↓</b>"
         else:
-            response_text += f"<b>Page {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
-            
-            # Show each comment
-            for idx, comment in enumerate(comments_data['comments'], 1):
-                # Check if commenter wants to be anonymous
-                if comment.user.is_anonymous_mode:
-                    commenter_name = "Anonymous"
-                else:
-                    commenter_name = comment.user.first_name
-                    if comment.user.username:
-                        commenter_name += f" (@{comment.user.username})"
-                
-                response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
-                response_text += f"{comment.text}\n"
-                response_text += f"👍 {comment.like_count}  👎 {comment.dislike_count}  🚩 {comment.report_count}\n\n"
+            main_post_text += "💬 <b>No comments yet</b>"
         
-        # Create inline keyboard with action buttons
-        keyboard = InlineKeyboardMarkup()
-        
-        # Add comment button FIRST (under confession)
-        keyboard.row(
+        # Create keyboard for main post with Add Comment button
+        main_keyboard = InlineKeyboardMarkup()
+        main_keyboard.row(
             InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
         )
         
-        # Add separator if there are comments
-        if comments_data['comments']:
-            keyboard.row(
-                InlineKeyboardButton("━━━ Comment Actions ━━━", callback_data="separator")
-            )
-        
-        # Add like/dislike/report buttons for EACH comment
-        for comment in comments_data['comments']:
-            # Comment identifier
-            keyboard.row(
-                InlineKeyboardButton(f"Comment #{comment.id}", callback_data=f"info_{comment.id}")
-            )
-            # Reaction buttons for this comment
-            keyboard.row(
-                InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}"),
-                InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
-            )
-        
-        # Add navigation buttons
-        nav_buttons = []
-        if comments_data['has_previous']:
-            nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
-        if comments_data['has_next']:
-            nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
-        if nav_buttons:
-            keyboard.row(*nav_buttons)
-        
-        # Send or edit message
+        # Edit the original message
         try:
             bot.edit_message_text(
-                response_text,
+                main_post_text,
                 call.message.chat.id,
                 call.message.message_id,
                 parse_mode='HTML',
-                reply_markup=keyboard
+                reply_markup=main_keyboard
             )
-        except:
-            # If edit fails, send new message
+        except Exception as e:
+            logger.warning(f"Could not edit main post: {e}")
+        
+        # Send each comment as a separate message with its own buttons
+        for comment in comments_data['comments']:
+            # Check if commenter wants to be anonymous
+            if comment.user.is_anonymous_mode:
+                commenter_name = "Anonymous"
+            else:
+                commenter_name = comment.user.first_name
+                if comment.user.username:
+                    commenter_name += f" (@{comment.user.username})"
+            
+            # Build comment text
+            comment_text = f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
+            comment_text += f"{comment.text}"
+            
+            # Create inline keyboard for this comment
+            comment_keyboard = InlineKeyboardMarkup()
+            comment_keyboard.row(
+                InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
+                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
+                InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
+            )
+            
+            # Send comment as separate message
             bot.send_message(
                 call.message.chat.id,
-                response_text,
+                comment_text,
                 parse_mode='HTML',
-                reply_markup=keyboard
+                reply_markup=comment_keyboard
             )
         
-        bot.answer_callback_query(call.id)
+        # If there are more comments, show pagination info
+        if comments_data['total_pages'] > 1:
+            pagination_text = f"📄 Showing page 1 of {comments_data['total_pages']}"
+            pagination_keyboard = InlineKeyboardMarkup()
+            
+            if comments_data['has_next']:
+                pagination_keyboard.row(
+                    InlineKeyboardButton("Next Page ➡️", callback_data=f"comments_page_{confession_id}_2")
+                )
+            
+            bot.send_message(
+                call.message.chat.id,
+                pagination_text,
+                reply_markup=pagination_keyboard
+            )
+        
+        bot.answer_callback_query(call.id, "✅ Comments loaded")
         
     except DatabaseError as e:
         error_text = handle_database_error(e, "viewing comments")
@@ -1606,7 +1600,7 @@ def handle_view_comments(call: CallbackQuery):
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('comments_page_'))
 def handle_comments_pagination(call: CallbackQuery):
-    """Handle pagination button callbacks for comments - shows one comment at a time"""
+    """Handle pagination button callbacks - loads next page of comments as separate messages"""
     try:
         telegram_id = call.from_user.id
         
@@ -1629,86 +1623,69 @@ def handle_comments_pagination(call: CallbackQuery):
             bot.answer_callback_query(call.id, "❌ Confession not found.")
             return
         
-        # Get comments for the requested page (1 comment at a time)
+        # Get comments for the requested page
         from bot.services.comment_service import get_comments
-        comments_data = get_comments(confession, page=page, page_size=1)
-        
-        # Build response text
-        confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
-        
-        response_text = f"<b>💬 Comments on Confession {confession_id}</b>\n\n"
-        response_text += f"<i>{confession_preview}</i>\n\n"
+        comments_data = get_comments(confession, page=page, page_size=10)
         
         if not comments_data['comments']:
-            response_text += "No comments on this page.\n\n"
-        else:
-            response_text += f"<b>Page {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
-            
-            # Show each comment
-            for idx, comment in enumerate(comments_data['comments'], 1):
-                # Check if commenter wants to be anonymous
-                if comment.user.is_anonymous_mode:
-                    commenter_name = "Anonymous"
-                else:
-                    commenter_name = comment.user.first_name
-                    if comment.user.username:
-                        commenter_name += f" (@{comment.user.username})"
-                
-                response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
-                response_text += f"{comment.text}\n"
-                response_text += f"👍 {comment.like_count}  👎 {comment.dislike_count}  🚩 {comment.report_count}\n\n"
+            bot.answer_callback_query(call.id, "No more comments")
+            return
         
-        # Create inline keyboard with action buttons
-        keyboard = InlineKeyboardMarkup()
+        # Delete the pagination message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
         
-        # Add comment button FIRST (under confession)
-        keyboard.row(
-            InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
-        )
-        
-        # Add separator if there are comments
-        if comments_data['comments']:
-            keyboard.row(
-                InlineKeyboardButton("━━━ Comment Actions ━━━", callback_data="separator")
-            )
-        
-        # Add like/dislike/report buttons for EACH comment
+        # Send each comment as a separate message with its own buttons
         for comment in comments_data['comments']:
-            # Comment identifier
-            keyboard.row(
-                InlineKeyboardButton(f"Comment #{comment.id}", callback_data=f"info_{comment.id}")
-            )
-            # Reaction buttons for this comment
-            keyboard.row(
+            # Check if commenter wants to be anonymous
+            if comment.user.is_anonymous_mode:
+                commenter_name = "Anonymous"
+            else:
+                commenter_name = comment.user.first_name
+                if comment.user.username:
+                    commenter_name += f" (@{comment.user.username})"
+            
+            # Build comment text
+            comment_text = f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
+            comment_text += f"{comment.text}"
+            
+            # Create inline keyboard for this comment
+            comment_keyboard = InlineKeyboardMarkup()
+            comment_keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
                 InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}"),
                 InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
             )
+            
+            # Send comment as separate message
+            bot.send_message(
+                call.message.chat.id,
+                comment_text,
+                parse_mode='HTML',
+                reply_markup=comment_keyboard
+            )
         
-        # Add navigation buttons
-        nav_buttons = []
-        if comments_data['has_previous']:
-            nav_buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
+        # If there are more comments, show pagination info
         if comments_data['has_next']:
-            nav_buttons.append(InlineKeyboardButton("Next ➡️", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
-        if nav_buttons:
-            keyboard.row(*nav_buttons)
+            pagination_text = f"📄 Page {page} of {comments_data['total_pages']}"
+            pagination_keyboard = InlineKeyboardMarkup()
+            pagination_keyboard.row(
+                InlineKeyboardButton("Next Page ➡️", callback_data=f"comments_page_{confession_id}_{page + 1}")
+            )
+            
+            bot.send_message(
+                call.message.chat.id,
+                pagination_text,
+                reply_markup=pagination_keyboard
+            )
         
-        # Edit message
-        bot.edit_message_text(
-            response_text,
-            call.message.chat.id,
-            call.message.message_id,
-            parse_mode='HTML',
-            reply_markup=keyboard
-        )
-        
-        bot.answer_callback_query(call.id)
+        bot.answer_callback_query(call.id, f"✅ Loaded page {page}")
         
     except Exception as e:
         bot.answer_callback_query(call.id, "❌ An error occurred.")
-        print(f"Error in handle_comments_pagination: {e}")
+        logger.error(f"Error in handle_comments_pagination: {e}")
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('add_comment_'))
 def handle_add_comment_button(call: CallbackQuery):
