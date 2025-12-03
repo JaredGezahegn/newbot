@@ -253,87 +253,16 @@ def start_command(message: Message):
                 bot.reply_to(message, error)
                 return
             
-            # Show comments directly
-            from bot.services.comment_service import get_comments
-            comments_data = get_comments(confession, page=1, page_size=5)
+            # Use the new handler to show comments (separate messages per comment)
+            handle_view_comments(bot, message.chat.id, confession_id, page=1)
             
-            # Build response text
-            confession_preview = confession.text[:150] + "..." if len(confession.text) > 150 else confession.text
-            
-            response_text = f"<b>💬 Comments on Confession {confession_id}</b>\n\n"
-            response_text += f"<i>{confession_preview}</i>\n\n"
-            
-            if not comments_data['comments']:
-                response_text += "No comments yet. Be the first to comment!\n\n"
-            else:
-                response_text += f"<b>Page {comments_data['current_page']} of {comments_data['total_pages']}</b>\n\n"
-                
-                for comment in comments_data['comments']:
-                    # Check if commenter wants to be anonymous
-                    if comment.user.is_anonymous_mode:
-                        commenter_name = "Anonymous"
-                    else:
-                        commenter_name = comment.user.first_name
-                        if comment.user.username:
-                            commenter_name += f" (@{comment.user.username})"
-                    
-                    response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
-                    response_text += f"{comment.text}\n\n"
-            
-            # Create inline keyboard with action buttons
-            inline_keyboard = InlineKeyboardMarkup()
-            
-            # Add comment button FIRST (under confession)
-            inline_keyboard.row(
-                InlineKeyboardButton("➕ Add Comment", callback_data=f"add_comment_{confession_id}")
-            )
-            
-            # Add separator if there are comments
-            if comments_data['comments']:
-                inline_keyboard.row(
-                    InlineKeyboardButton("━━━ Comment Actions ━━━", callback_data="separator")
-                )
-            
-            # Add like/dislike/report buttons for EACH comment
-            for comment in comments_data['comments']:
-                # Comment identifier
-                inline_keyboard.row(
-                    InlineKeyboardButton(f"Comment #{comment.id}", callback_data=f"info_{comment.id}")
-                )
-                # Reaction buttons for this comment
-                inline_keyboard.row(
-                    InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                    InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                    InlineKeyboardButton(f"🚩 Report", callback_data=f"report_comment_{comment.id}"),
-                    InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
-                )
-            
-            # Add pagination buttons if needed
-            if comments_data['total_pages'] > 1:
-                buttons = []
-                if comments_data['has_previous']:
-                    buttons.append(InlineKeyboardButton("⬅️ Previous", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] - 1}"))
-                if comments_data['has_next']:
-                    buttons.append(InlineKeyboardButton("➡️ Next", callback_data=f"comments_page_{confession_id}_{comments_data['current_page'] + 1}"))
-                if buttons:
-                    inline_keyboard.row(*buttons)
-            
-            # Create main menu keyboard
+            # Send the main keyboard
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
             keyboard.add(
                 KeyboardButton("✍️ Confess"),
                 KeyboardButton("👤 Profile"),
                 KeyboardButton("ℹ️ Help")
             )
-            
-            bot.send_message(
-                message.chat.id,
-                response_text,
-                parse_mode='HTML',
-                reply_markup=inline_keyboard
-            )
-            
-            # Also send the main keyboard
             bot.send_message(
                 message.chat.id,
                 "Use the buttons below to navigate:",
