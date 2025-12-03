@@ -1013,7 +1013,7 @@ def comments_command(message: Message):
         
         # Add pagination info
         if comments_data['has_next'] or comments_data['has_previous']:
-            response_text += f"\n<i>Use /comments {confession_id} to view comments. Pagination coming soon!</i>"
+            response_text += f"\n<i>Use /comments{confession_id} to view comments. Pagination coming soon!</i>"
         
         bot.reply_to(message, response_text)
         
@@ -1542,24 +1542,28 @@ def handle_view_comments(call: CallbackQuery):
         
         # Send each comment as a separate message with its own buttons
         for comment in comments_data['comments']:
-            # Check if commenter wants to be anonymous
-            if comment.user.is_anonymous_mode:
-                commenter_name = "Anonymous"
-            else:
-                commenter_name = comment.user.first_name
-                if comment.user.username:
-                    commenter_name += f" (@{comment.user.username})"
-            
-            # Build comment text
-            comment_text = f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
-            comment_text += f"{comment.text}"
+            # Build comment text following guideline format
+            # Author
+            comment_text = "<b>Anonymous</b>\n"
+            # Comment text (truncated to 400 chars)
+            comment_snippet = comment.text[:400]
+            comment_text += f"{comment_snippet}\n"
+            # Timestamp
+            from django.utils import timezone
+            timestamp = comment.created_at.strftime("%b %d, %Y • %I:%M %p")
+            comment_text += f"🕒 {timestamp}"
             
             # Create inline keyboard for this comment
             comment_keyboard = InlineKeyboardMarkup()
+            # Row 1: Reactions
             comment_keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
+                InlineKeyboardButton(f"⚠️ {comment.report_count}", callback_data=f"report_comment_{comment.id}"),
+                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
+            )
+            # Row 2: Reply
+            comment_keyboard.row(
+                InlineKeyboardButton("↩️ Reply", callback_data=f"reply_comment_{comment.id}")
             )
             
             # Send comment as separate message
@@ -1639,24 +1643,28 @@ def handle_comments_pagination(call: CallbackQuery):
         
         # Send each comment as a separate message with its own buttons
         for comment in comments_data['comments']:
-            # Check if commenter wants to be anonymous
-            if comment.user.is_anonymous_mode:
-                commenter_name = "Anonymous"
-            else:
-                commenter_name = comment.user.first_name
-                if comment.user.username:
-                    commenter_name += f" (@{comment.user.username})"
-            
-            # Build comment text
-            comment_text = f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
-            comment_text += f"{comment.text}"
+            # Build comment text following guideline format
+            # Author
+            comment_text = "<b>Anonymous</b>\n"
+            # Comment text (truncated to 400 chars)
+            comment_snippet = comment.text[:400]
+            comment_text += f"{comment_snippet}\n"
+            # Timestamp
+            from django.utils import timezone
+            timestamp = comment.created_at.strftime("%b %d, %Y • %I:%M %p")
+            comment_text += f"🕒 {timestamp}"
             
             # Create inline keyboard for this comment
             comment_keyboard = InlineKeyboardMarkup()
+            # Row 1: Reactions
             comment_keyboard.row(
                 InlineKeyboardButton(f"👍 {comment.like_count}", callback_data=f"like_comment_{comment.id}"),
-                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}"),
-                InlineKeyboardButton(f"💬 Reply", callback_data=f"reply_comment_{comment.id}")
+                InlineKeyboardButton(f"⚠️ {comment.report_count}", callback_data=f"report_comment_{comment.id}"),
+                InlineKeyboardButton(f"👎 {comment.dislike_count}", callback_data=f"dislike_comment_{comment.id}")
+            )
+            # Row 2: Reply
+            comment_keyboard.row(
+                InlineKeyboardButton("↩️ Reply", callback_data=f"reply_comment_{comment.id}")
             )
             
             # Send comment as separate message
