@@ -146,7 +146,7 @@ def handle_view_comments(bot, call: CallbackQuery):
         # Get comments for page 1
         comments_data = get_comments(confession, page=1, page_size=PAGE_SIZE)
         
-        # Send page header
+        # Send page header (separate message)
         send_page_header(
             bot,
             call.message.chat.id,
