@@ -1152,9 +1152,12 @@ You will be notified once it's reviewed.
                 
                 # Restore main menu keyboard
                 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
-                keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-                keyboard.row(KeyboardButton("📝 Confess"), KeyboardButton("👤 Profile"))
-                keyboard.row(KeyboardButton("💬 My Comments"), KeyboardButton("❓ Help"))
+                keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                keyboard.add(
+                    KeyboardButton("✍️ Confess"),
+                    KeyboardButton("👤 Profile"),
+                    KeyboardButton("ℹ️ Help")
+                )
                 
                 bot.send_message(
                     call.message.chat.id,
@@ -1205,9 +1208,12 @@ You will be notified once it's reviewed.
             
             # Restore main menu keyboard
             from telebot.types import ReplyKeyboardMarkup, KeyboardButton
-            keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-            keyboard.row(KeyboardButton("📝 Confess"), KeyboardButton("👤 Profile"))
-            keyboard.row(KeyboardButton("💬 My Comments"), KeyboardButton("❓ Help"))
+            keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+            keyboard.add(
+                KeyboardButton("✍️ Confess"),
+                KeyboardButton("👤 Profile"),
+                KeyboardButton("ℹ️ Help")
+            )
             
             bot.send_message(
                 call.message.chat.id,
@@ -1772,9 +1778,12 @@ def handle_unknown_command(message: Message):
                 
                 # Show main menu keyboard
                 from telebot.types import ReplyKeyboardMarkup, KeyboardButton
-                keyboard = ReplyKeyboardMarkup(resize_keyboard=True)
-                keyboard.row(KeyboardButton("📝 Confess"), KeyboardButton("👤 Profile"))
-                keyboard.row(KeyboardButton("💬 My Comments"), KeyboardButton("❓ Help"))
+                keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                keyboard.add(
+                    KeyboardButton("✍️ Confess"),
+                    KeyboardButton("👤 Profile"),
+                    KeyboardButton("ℹ️ Help")
+                )
                 
                 bot.reply_to(message, "❌ Confession submission cancelled.", reply_markup=keyboard)
                 return

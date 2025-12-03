@@ -35,13 +35,15 @@ show_comments_for_confession(bot, message.chat.id, confession_id, page=1)
 ## Result
 Now when users click "View Comments" from the channel, they get the CORRECT format:
 - Header message: "💬 Comments for Confession #X • Page Y"
-- Navigation buttons: [⬅️ Prev] [Next ➡️]
+  - With "Add Comment" button: [➕ Add Comment]
+  - Navigation buttons (if needed): [⬅️ Prev] [Next ➡️]
 - Each comment as a SEPARATE message with:
   - Anonymous author
   - Comment text
   - Timestamp (🕒 Dec 3, 2024 • 02:30 PM)
   - Reaction buttons: [👍 N] [⚠️ N] [👎 N]
   - Reply button: [↩️ Reply]
+- If no comments: "No comments yet. Be the first to comment!"
 
 ## Files Modified
 1. `bot/handlers/comment_handlers.py` - Added `show_comments_for_confession()`, refactored `handle_view_comments()`

@@ -95,28 +95,41 @@ def send_page_header(bot, chat_id, confession_id, page, total_pages, has_prev, h
     """
     Send page header:
     💬 Comments for Confession #42 • Page 1
+    [➕ Add Comment]
     [⬅️ Prev] [Next ➡️]
     """
     header_text = f"💬 Comments for Confession #{confession_id} • Page {page}"
     
+    keyboard = InlineKeyboardMarkup()
+    
+    # Add Comment button (always shown)
+    keyboard.row(
+        InlineKeyboardButton(
+            "➕ Add Comment",
+            callback_data=f"add_comment_{confession_id}"
+        )
+    )
+    
     # Build navigation buttons
-    buttons = []
+    nav_buttons = []
     if has_prev:
-        buttons.append(
+        nav_buttons.append(
             InlineKeyboardButton(
                 "⬅️ Prev",
                 callback_data=f"comments_page_{confession_id}_{page - 1}"
             )
         )
     if has_next:
-        buttons.append(
+        nav_buttons.append(
             InlineKeyboardButton(
                 "Next ➡️",
                 callback_data=f"comments_page_{confession_id}_{page + 1}"
             )
         )
     
-    keyboard = InlineKeyboardMarkup([buttons]) if buttons else None
+    # Add navigation row if there are nav buttons
+    if nav_buttons:
+        keyboard.row(*nav_buttons)
     
     bot.send_message(
         chat_id,
