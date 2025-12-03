@@ -125,44 +125,64 @@ def send_page_header(bot, chat_id, confession_id, page, total_pages, has_prev, h
     )
 
 
-def handle_view_comments(bot, call: CallbackQuery):
+def show_comments_for_confession(bot, chat_id, confession_id, page=1):
     """
-    Handle 'View Comments' button.
+    Show comments for a confession (used by deep links and direct calls).
     Sends:
     1. Page header with navigation
     2. Each comment as separate message
+    
+    Args:
+        bot: TeleBot instance
+        chat_id: Chat ID to send messages to
+        confession_id: ID of the confession
+        page: Page number (default 1)
     """
     try:
-        # Extract confession ID
-        confession_id = int(call.data.split('_')[2])
-        
         # Get confession
         try:
             confession = Confession.objects.get(id=confession_id)
         except Confession.DoesNotExist:
-            bot.answer_callback_query(call.id, "❌ Confession not found.")
+            bot.send_message(chat_id, "❌ Confession not found.")
             return
         
-        # Get comments for page 1
-        comments_data = get_comments(confession, page=1, page_size=PAGE_SIZE)
+        # Get comments for requested page
+        comments_data = get_comments(confession, page=page, page_size=PAGE_SIZE)
         
         # Send page header (separate message)
         send_page_header(
             bot,
-            call.message.chat.id,
+            chat_id,
             confession_id,
-            1,
+            page,
             comments_data['total_pages'],
-            False,  # No previous on page 1
+            comments_data['has_previous'],
             comments_data['has_next']
         )
         
         # Send each comment as separate message
         if not comments_data['comments']:
-            bot.send_message(call.message.chat.id, "No comments yet.")
+            bot.send_message(chat_id, "No comments yet. Be the first to comment!")
         else:
             for comment in comments_data['comments']:
-                send_comment_message(bot, call.message.chat.id, comment)
+                send_comment_message(bot, chat_id, comment)
+        
+    except Exception as e:
+        logger.error(f"Error in show_comments_for_confession: {e}")
+        bot.send_message(chat_id, "❌ An error occurred while loading comments.")
+
+
+def handle_view_comments(bot, call: CallbackQuery):
+    """
+    Handle 'View Comments' button callback.
+    Wrapper that extracts data from callback and calls show_comments_for_confession.
+    """
+    try:
+        # Extract confession ID
+        confession_id = int(call.data.split('_')[2])
+        
+        # Use the main function
+        show_comments_for_confession(bot, call.message.chat.id, confession_id, page=1)
         
         bot.answer_callback_query(call.id, "✅ Comments loaded")
         

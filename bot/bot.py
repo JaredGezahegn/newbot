@@ -17,7 +17,7 @@ from bot.services.user_service import register_user, toggle_anonymity, get_user_
 from bot.services.confession_service import create_confession
 from bot.services.notification_service import notify_admins_new_confession, notify_user_confession_status
 from bot.models import User, Confession, Comment
-from bot.handlers import handle_view_comments, handle_comments_pagination
+from bot.handlers import handle_view_comments, handle_comments_pagination, show_comments_for_confession
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -254,7 +254,7 @@ def start_command(message: Message):
                 return
             
             # Use the new handler to show comments (separate messages per comment)
-            handle_view_comments(bot, message.chat.id, confession_id, page=1)
+            show_comments_for_confession(bot, message.chat.id, confession_id, page=1)
             
             # Send the main keyboard
             keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
