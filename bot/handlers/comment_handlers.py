@@ -15,11 +15,43 @@ PAGE_SIZE = 5
 
 
 def format_timestamp(dt):
-    """Format datetime to 'Dec 03, 2024 • 02:30 PM'"""
+    """Format datetime to 'Dec 03, 2024 • 02:30 PM' in local timezone"""
     try:
+        from django.utils import timezone as django_tz
+        import pytz
+        
+        # If datetime is timezone-aware (UTC), convert to local timezone
+        if dt.tzinfo is not None:
+            # Convert from UTC to your local timezone (adjust as needed)
+            # Using Africa/Addis_Ababa (Ethiopia) which is UTC+3
+            local_tz = pytz.timezone('Africa/Addis_Ababa')
+            dt = dt.astimezone(local_tz)
+        
         return dt.strftime("%b %d, %Y • %I:%M %p")
-    except Exception:
-        return "Unknown time"
+    except Exception as e:
+        # Fallback to simple format
+        try:
+            return dt.strftime("%b %d, %Y • %I:%M %p")
+        except Exception:
+            return "Unknown time"
+
+
+def get_acceptance_emoji(acceptance_score, has_reactions):
+    """
+    Get emoji based on community acceptance score.
+    New users (no reactions yet) get neutral emoji.
+    """
+    # New users with no reactions yet get neutral emoji
+    if not has_reactions:
+        return "😐"
+    
+    # Users with reactions get emoji based on score
+    if acceptance_score < 30:
+        return "😈"
+    elif acceptance_score <= 50:
+        return "😐"
+    else:
+        return "😇"
 
 
 def build_comment_text(comment):
@@ -27,14 +59,32 @@ def build_comment_text(comment):
     Build comment text following guideline format:
     Anonymous
     Great perspective on this situation...
+    👤 • ⭐ -11 • 😈 1.58
     🕒 Dec 3, 2024 • 02:30 PM
     """
+    from bot.services.user_service import calculate_impact_points, calculate_acceptance_score
+    from bot.models import Reaction
+    
     # Author
     comment_text = "<b>Anonymous</b>\n"
     
     # Comment text (truncated to 400 chars)
     comment_snippet = comment.text[:400]
-    comment_text += f"{comment_snippet}\n"
+    comment_text += f"{comment_snippet}\n\n"
+    
+    # User stats line
+    user = comment.user
+    impact_points = calculate_impact_points(user)
+    acceptance_score = calculate_acceptance_score(user)
+    
+    # Convert acceptance score from 0-100 to 0-10 scale
+    acceptance_score_scaled = acceptance_score / 10
+    
+    # Check if user has any reactions
+    has_reactions = Reaction.objects.filter(comment__user=user).exists()
+    acceptance_emoji = get_acceptance_emoji(acceptance_score, has_reactions)
+    
+    comment_text += f"👤 • ⭐ {impact_points} • {acceptance_emoji} {acceptance_score_scaled:.2f}\n"
     
     # Timestamp
     timestamp = format_timestamp(comment.created_at)
