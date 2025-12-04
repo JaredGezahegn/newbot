@@ -1875,7 +1875,7 @@ Do you want to submit this confession?
             # Create the comment
             try:
                 from bot.services.comment_service import create_comment
-                comment = create_comment(user, confession, comment_text)
+                comment = create_comment(user, confession, comment_text, bot_instance=bot)
                 
                 # Clear user state
                 del user_states[telegram_id]
@@ -1951,7 +1951,7 @@ Use /comments {confession_id} to view all comments on this confession.
             # Create the reply
             try:
                 from bot.services.comment_service import create_comment
-                reply = create_comment(user, confession, reply_text, parent_comment=parent_comment)
+                reply = create_comment(user, confession, reply_text, parent_comment=parent_comment, bot_instance=bot)
                 
                 # Clear user state
                 del user_states[telegram_id]

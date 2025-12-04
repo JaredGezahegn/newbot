@@ -163,10 +163,15 @@ def publish_to_channel(confession, bot_instance):
     # Get bot username from settings
     bot_username = getattr(settings, 'BOT_USERNAME', 'your_bot')
     
+    # Get comment count for this confession
+    comment_count = confession.comments.count()
+    
     keyboard = InlineKeyboardMarkup()
     # URL button that opens bot in private chat with start parameter
+    # Include comment count in button text
+    button_text = f"💬 View / Add Comments ({comment_count})"
     keyboard.add(InlineKeyboardButton(
-        "💬 View / Add Comments", 
+        button_text, 
         url=f"https://t.me/{bot_username}?start=comments_{confession.id}"
     ))
     

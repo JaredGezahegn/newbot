@@ -6,7 +6,7 @@ from django.core.paginator import Paginator
 from bot.models import Comment, Reaction, User, Confession
 
 
-def create_comment(user, confession, text, parent_comment=None):
+def create_comment(user, confession, text, parent_comment=None, bot_instance=None):
     """
     Create a new comment on a confession or reply to another comment.
     
@@ -15,6 +15,7 @@ def create_comment(user, confession, text, parent_comment=None):
         confession: Confession instance
         text: Comment text (max 1000 characters)
         parent_comment: Optional parent Comment instance for replies
+        bot_instance: Optional TeleBot instance to update channel message button
     
     Returns:
         Comment: The created comment
@@ -36,6 +37,10 @@ def create_comment(user, confession, text, parent_comment=None):
         # Increment user's comment count
         user.total_comments += 1
         user.save(update_fields=['total_comments'])
+        
+        # Update channel message button with new comment count
+        if bot_instance and confession.channel_message_id:
+            update_channel_button(confession, bot_instance)
     
     return comment
 
@@ -186,3 +191,54 @@ def get_comment_reactions(comment):
         'dislikes': comment.dislike_count,
         'reports': comment.report_count,
     }
+
+
+
+def update_channel_button(confession, bot_instance):
+    """
+    Update the "View / Add Comments" button on the channel message with current comment count.
+    
+    Args:
+        confession: Confession instance
+        bot_instance: TeleBot instance
+    
+    Returns:
+        bool: True if updated successfully, False otherwise
+    """
+    from django.conf import settings
+    from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+    
+    if not confession.channel_message_id:
+        return False
+    
+    channel_id = getattr(settings, 'CHANNEL_ID', None)
+    if not channel_id:
+        return False
+    
+    try:
+        # Get bot username from settings
+        bot_username = getattr(settings, 'BOT_USERNAME', 'your_bot')
+        
+        # Get current comment count
+        comment_count = confession.comments.count()
+        
+        # Create updated keyboard
+        keyboard = InlineKeyboardMarkup()
+        button_text = f"💬 View / Add Comments ({comment_count})"
+        keyboard.add(InlineKeyboardButton(
+            button_text,
+            url=f"https://t.me/{bot_username}?start=comments_{confession.id}"
+        ))
+        
+        # Update the message's reply markup (button only)
+        bot_instance.edit_message_reply_markup(
+            chat_id=channel_id,
+            message_id=confession.channel_message_id,
+            reply_markup=keyboard
+        )
+        
+        return True
+    except Exception as e:
+        # Log error but don't fail the comment creation
+        print(f"Error updating channel button: {e}")
+        return False
