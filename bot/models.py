@@ -80,3 +80,27 @@ class Reaction(models.Model):
             models.Index(fields=['comment', 'user']),
             models.Index(fields=['comment', 'user', 'reaction_type']),
         ]
+
+
+
+class Feedback(models.Model):
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('reviewed', 'Reviewed'),
+        ('resolved', 'Resolved'),
+    ]
+    
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='feedbacks')
+    text = models.TextField(max_length=2000)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', db_index=True)
+    reviewed_by = models.ForeignKey(User, null=True, blank=True, on_delete=models.SET_NULL, related_name='reviewed_feedbacks')
+    created_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    admin_notes = models.TextField(max_length=1000, blank=True, default='')
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['status']),
+            models.Index(fields=['created_at']),
+        ]
+        ordering = ['-created_at']
