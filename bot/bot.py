@@ -844,8 +844,8 @@ def view_feedback_command(message: Message):
             response += f"📅 {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}\n"
             response += f"💬 {feedback.text[:100]}{'...' if len(feedback.text) > 100 else ''}\n\n"
         
-        response += "Use /feedback <id> to view full feedback\n"
-        response += "Use /resolvefeedback <id> to mark as resolved"
+        response += "Use /feedback &lt;id&gt; to view full feedback\n"
+        response += "Use /resolvefeedback &lt;id&gt; to mark as resolved"
         
         bot.reply_to(message, response, parse_mode='HTML')
     except Exception as e:
