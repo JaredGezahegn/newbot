@@ -327,15 +327,16 @@ When anonymous mode is OFF ❌, your confessions will show your name.
 When a confession is approved, it's posted to the channel with a "View / Add Comments" button. Click it to see and add comments!
     """
     
-    # Create keyboard with main buttons
-    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
-    keyboard.add(
-        KeyboardButton("✍️ Confess"),
-        KeyboardButton("👤 Profile"),
-        KeyboardButton("ℹ️ Help")
+    # Create inline keyboard with feedback and back buttons
+    inline_keyboard = InlineKeyboardMarkup()
+    inline_keyboard.row(
+        InlineKeyboardButton("📝 Send Feedback", callback_data="send_feedback")
+    )
+    inline_keyboard.row(
+        InlineKeyboardButton("🔙 Back to Main Menu", callback_data="back_to_main")
     )
     
-    bot.reply_to(message, help_text, reply_markup=keyboard)
+    bot.reply_to(message, help_text, reply_markup=inline_keyboard)
 
 
 @bot.message_handler(commands=['register'])
@@ -811,6 +812,141 @@ Confession ID {confession_id} has been deleted from the database.
     except Exception as e:
         error_text = handle_generic_error(e, "deleting confession")
         bot.reply_to(message, error_text)
+
+
+@bot.message_handler(commands=['viewfeedback'])
+def view_feedback_command(message: Message):
+    """Handle /viewfeedback command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    try:
+        from bot.models import Feedback
+        # Get recent feedback (last 10)
+        feedbacks = Feedback.objects.all()[:10]
+        
+        if not feedbacks:
+            bot.reply_to(message, "📭 No feedback received yet.")
+            return
+        
+        response = "📬 <b>Recent Feedback</b>\n\n"
+        
+        for feedback in feedbacks:
+            status_emoji = {
+                'pending': '🟡',
+                'reviewed': '🔵', 
+                'resolved': '🟢'
+            }.get(feedback.status, '⚪')
+            
+            response += f"{status_emoji} <b>#{feedback.id}</b> - {feedback.status.title()}\n"
+            response += f"📅 {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}\n"
+            response += f"💬 {feedback.text[:100]}{'...' if len(feedback.text) > 100 else ''}\n\n"
+        
+        response += "Use /feedback <id> to view full feedback\n"
+        response += "Use /resolvefeedback <id> to mark as resolved"
+        
+        bot.reply_to(message, response, parse_mode='HTML')
+    except Exception as e:
+        bot.reply_to(message, "❌ Error retrieving feedback.")
+        logger.error(f"Error in view_feedback: {e}")
+
+
+@bot.message_handler(commands=['feedback'])
+def view_single_feedback_command(message: Message):
+    """Handle /feedback <id> command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    try:
+        # Parse feedback ID
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "❌ Usage: /feedback <id>")
+            return
+        
+        feedback_id = int(parts[1])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        status_emoji = {
+            'pending': '🟡',
+            'reviewed': '🔵', 
+            'resolved': '🟢'
+        }.get(feedback.status, '⚪')
+        
+        response = f"""
+{status_emoji} <b>Feedback #{feedback.id}</b>
+
+<b>Status:</b> {feedback.status.title()}
+<b>Submitted:</b> {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}
+
+<b>Feedback:</b>
+{feedback.text}
+        """
+        
+        if feedback.reviewed_by:
+            response += f"\n<b>Reviewed by:</b> {feedback.reviewed_by.username or feedback.reviewed_by.first_name}"
+            response += f"\n<b>Reviewed at:</b> {feedback.reviewed_at.strftime('%b %d, %Y • %I:%M %p')}"
+        
+        if feedback.admin_notes:
+            response += f"\n\n<b>Admin Notes:</b>\n{feedback.admin_notes}"
+        
+        bot.reply_to(message, response, parse_mode='HTML')
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid feedback ID. Please provide a number.")
+    except Feedback.DoesNotExist:
+        bot.reply_to(message, "❌ Feedback not found.")
+    except Exception as e:
+        bot.reply_to(message, "❌ Error retrieving feedback.")
+        logger.error(f"Error in view_single_feedback: {e}")
+
+
+@bot.message_handler(commands=['resolvefeedback'])
+def resolve_feedback_command(message: Message):
+    """Handle /resolvefeedback <id> command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    try:
+        # Parse feedback ID
+        parts = message.text.split()
+        if len(parts) != 2:
+            bot.reply_to(message, "❌ Usage: /resolvefeedback <id>")
+            return
+        
+        feedback_id = int(parts[1])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Update feedback
+        feedback.status = 'resolved'
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        feedback.save()
+        
+        bot.reply_to(
+            message, 
+            f"✅ Feedback #{feedback_id} marked as resolved.",
+            parse_mode='HTML'
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid feedback ID. Please provide a number.")
+    except Feedback.DoesNotExist:
+        bot.reply_to(message, "❌ Feedback not found.")
+    except Exception as e:
+        bot.reply_to(message, "❌ Error resolving feedback.")
+        logger.error(f"Error in resolve_feedback: {e}")
 
 
 @bot.message_handler(commands=['comment'])
@@ -1751,6 +1887,77 @@ Type /cancel to cancel.
         logger.error(f"Error in handle_reply_comment: {e}")
 
 
+@bot.callback_query_handler(func=lambda call: call.data == "send_feedback")
+def handle_send_feedback(call: CallbackQuery):
+    """Handle feedback button click"""
+    telegram_id = call.from_user.id
+    try:
+        # Get or create user
+        user, error = get_user_or_error(telegram_id)
+        if error:
+            # Try to create user if they don't exist
+            first_name = call.from_user.first_name or "User"
+            username = call.from_user.username
+            from bot.utils import retry_db_operation
+            
+            @retry_db_operation(max_retries=3)
+            def register_with_retry():
+                return register_user(telegram_id, first_name, username)
+            
+            user = register_with_retry()
+        
+        # Set user state to waiting for feedback
+        user_states[telegram_id] = {
+            'state': 'waiting_feedback_text',
+            'data': {}
+        }
+        
+        bot.edit_message_text(
+            "📝 <b>Anonymous Feedback</b>\n\n"
+            "Your feedback is completely anonymous and helps us improve the bot.\n\n"
+            "Please write your feedback, suggestions, or report any issues:",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            parse_mode='HTML'
+        )
+        bot.answer_callback_query(call.id)
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred. Please try again.")
+        logger.error(f"Error in send_feedback: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data == "back_to_main")
+def handle_back_to_main(call: CallbackQuery):
+    """Handle back to main menu button"""
+    telegram_id = call.from_user.id
+    
+    # Clear any pending state
+    if telegram_id in user_states:
+        del user_states[telegram_id]
+    
+    # Show main menu
+    keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+    keyboard.add(
+        KeyboardButton("✍️ Confess"),
+        KeyboardButton("👤 Profile"),
+        KeyboardButton("ℹ️ Help")
+    )
+    
+    bot.edit_message_text(
+        "🏠 <b>Main Menu</b>\n\n"
+        "Welcome back! Choose an option below or use the keyboard buttons:",
+        chat_id=call.message.chat.id,
+        message_id=call.message.message_id,
+        parse_mode='HTML'
+    )
+    bot.send_message(
+        call.message.chat.id,
+        "Choose an option:",
+        reply_markup=keyboard
+    )
+    bot.answer_callback_query(call.id)
+
+
 @bot.callback_query_handler(func=lambda call: True)
 def handle_unknown_callback(call: CallbackQuery):
     """Handle unknown callback queries"""
@@ -1840,6 +2047,79 @@ Do you want to submit this confession?
             
             bot.reply_to(message, confirmation_text, reply_markup=keyboard)
             return
+        
+        elif state == 'waiting_feedback_text':
+            # User is submitting feedback text
+            feedback_text = message.text.strip()
+            
+            if len(feedback_text) > 2000:
+                bot.reply_to(message, "❌ Feedback is too long. Please keep it under 2000 characters.")
+                return
+            
+            if len(feedback_text) < 10:
+                bot.reply_to(message, "❌ Feedback is too short. Please provide at least 10 characters.")
+                return
+            
+            try:
+                # Get user
+                user, error = get_user_or_error(telegram_id)
+                if error:
+                    bot.reply_to(message, error)
+                    del user_states[telegram_id]
+                    return
+                
+                # Create feedback
+                from bot.models import Feedback
+                feedback = Feedback.objects.create(
+                    user=user,
+                    text=feedback_text
+                )
+                
+                # Notify admins
+                admin_ids = [admin_id for admin_id in settings.ADMINS]
+                admin_message = f"""
+📬 <b>New Anonymous Feedback #{feedback.id}</b>
+
+<b>Feedback:</b>
+{feedback_text}
+
+<b>Submitted:</b> {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}
+
+Use /viewfeedback to see all feedback.
+                """
+                
+                for admin_id in admin_ids:
+                    try:
+                        bot.send_message(admin_id, admin_message, parse_mode='HTML')
+                    except Exception as e:
+                        logger.error(f"Failed to notify admin {admin_id}: {e}")
+                
+                # Confirm to user
+                keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+                keyboard.add(
+                    KeyboardButton("✍️ Confess"),
+                    KeyboardButton("👤 Profile"),
+                    KeyboardButton("ℹ️ Help")
+                )
+                
+                bot.reply_to(
+                    message, 
+                    "✅ <b>Feedback Submitted!</b>\n\n"
+                    "Thank you for your anonymous feedback. It helps us improve the bot!\n\n"
+                    "Your feedback has been sent to the administrators.",
+                    parse_mode='HTML',
+                    reply_markup=keyboard
+                )
+                
+                # Clear user state
+                del user_states[telegram_id]
+                return
+                
+            except Exception as e:
+                bot.reply_to(message, "❌ Failed to submit feedback. Please try again.")
+                logger.error(f"Error creating feedback: {e}")
+                del user_states[telegram_id]
+                return
         
         elif state == 'waiting_comment_text':
             # User is submitting comment text
