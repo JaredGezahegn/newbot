@@ -684,24 +684,59 @@ def pending_command(message: Message):
             bot.reply_to(message, "✅ No pending confessions at the moment.")
             return
         
-        response_text = f"<b>📋 Pending Confessions ({pending_confessions.count()})</b>\n\n"
+        # Send summary first
+        summary_text = f"<b>📋 Pending Confessions ({pending_confessions.count()})</b>\n\n"
+        if pending_confessions.count() > 10:
+            summary_text += f"<i>Showing first 10 confessions. Use Django admin to see all.</i>\n\n"
         
-        for confession in pending_confessions[:20]:  # Limit to 20 to avoid message length issues
-            text_preview = confession.text[:100] + "..." if len(confession.text) > 100 else confession.text
+        bot.reply_to(message, summary_text)
+        
+        # Send each confession as a separate message with full text
+        for confession in pending_confessions[:10]:  # Limit to 10 to avoid spam
             author = confession.user.first_name
             if confession.user.username:
                 author += f" (@{confession.user.username})"
             
-            response_text += f"<b>ID {confession.id}</b>\n"
-            response_text += f"From: {author}\n"
-            response_text += f"Anonymous: {'Yes' if confession.is_anonymous else 'No'}\n"
-            response_text += f"Preview: {text_preview}\n"
-            response_text += f"Submitted: {confession.created_at.strftime('%Y-%m-%d %H:%M')}\n\n"
-        
-        if pending_confessions.count() > 20:
-            response_text += f"\n<i>Showing 20 of {pending_confessions.count()} pending confessions.</i>"
-        
-        bot.reply_to(message, response_text)
+            # Build confession header
+            header = f"""<b>📝 Confession ID {confession.id}</b>
+
+<b>From:</b> {author}
+<b>Anonymous:</b> {'Yes' if confession.is_anonymous else 'No'}
+<b>Submitted:</b> {confession.created_at.strftime('%Y-%m-%d %H:%M')}
+
+<b>Full Text:</b>
+"""
+            
+            # Check if confession text is too long for a single message
+            # Telegram limit is 4096 chars, leave room for header and buttons
+            max_text_length = 3500
+            confession_full_text = confession.text
+            
+            if len(header) + len(confession_full_text) > max_text_length:
+                # Split into multiple messages
+                confession_text = header + confession_full_text[:max_text_length - len(header)] + "\n\n<i>... (continued in next message)</i>"
+                bot.send_message(message.chat.id, confession_text, parse_mode='HTML')
+                
+                # Send remaining text
+                remaining_text = confession_full_text[max_text_length - len(header):]
+                bot.send_message(message.chat.id, f"<i>(Continuation of Confession {confession.id})</i>\n\n{remaining_text}", parse_mode='HTML')
+            else:
+                confession_text = header + confession_full_text
+            
+            # Create inline keyboard with approve/reject buttons
+            from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+            keyboard = InlineKeyboardMarkup()
+            keyboard.row(
+                InlineKeyboardButton("✅ Approve", callback_data=f"approve_{confession.id}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{confession.id}")
+            )
+            
+            # Send the confession with buttons (or just buttons if we already sent the text)
+            if len(header) + len(confession_full_text) <= max_text_length:
+                bot.send_message(message.chat.id, confession_text, parse_mode='HTML', reply_markup=keyboard)
+            else:
+                # Buttons on a separate message
+                bot.send_message(message.chat.id, f"<b>Actions for Confession {confession.id}:</b>", parse_mode='HTML', reply_markup=keyboard)
         
     except DatabaseError as e:
         error_text = handle_database_error(e, "fetching pending confessions")
