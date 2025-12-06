@@ -849,8 +849,8 @@ def view_feedback_command(message: Message):
         
         bot.reply_to(message, response, parse_mode='HTML')
     except Exception as e:
-        bot.reply_to(message, "❌ Error retrieving feedback.")
-        logger.error(f"Error in view_feedback: {e}")
+        bot.reply_to(message, f"❌ Error retrieving feedback.\n\nError: {str(e)[:200]}")
+        logger.error(f"Error in view_feedback: {e}", exc_info=True)
 
 
 @bot.message_handler(commands=['feedback'])
@@ -902,8 +902,8 @@ def view_single_feedback_command(message: Message):
     except Feedback.DoesNotExist:
         bot.reply_to(message, "❌ Feedback not found.")
     except Exception as e:
-        bot.reply_to(message, "❌ Error retrieving feedback.")
-        logger.error(f"Error in view_single_feedback: {e}")
+        bot.reply_to(message, f"❌ Error retrieving feedback.\n\nError: {str(e)[:200]}")
+        logger.error(f"Error in view_single_feedback: {e}", exc_info=True)
 
 
 @bot.message_handler(commands=['resolvefeedback'])
@@ -945,8 +945,8 @@ def resolve_feedback_command(message: Message):
     except Feedback.DoesNotExist:
         bot.reply_to(message, "❌ Feedback not found.")
     except Exception as e:
-        bot.reply_to(message, "❌ Error resolving feedback.")
-        logger.error(f"Error in resolve_feedback: {e}")
+        bot.reply_to(message, f"❌ Error resolving feedback.\n\nError: {str(e)[:200]}")
+        logger.error(f"Error in resolve_feedback: {e}", exc_info=True)
 
 
 @bot.message_handler(commands=['comment'])
@@ -2116,6 +2116,7 @@ Use /viewfeedback to see all feedback.
                         logger.error(f"Failed to notify admin {admin_id}: {e}")
                 
                 # Confirm to user
+                from telebot.types import ReplyKeyboardMarkup, KeyboardButton
                 keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
                 keyboard.add(
                     KeyboardButton("✍️ Confess"),
