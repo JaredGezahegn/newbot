@@ -2070,6 +2070,27 @@ Do you want to submit this confession?
                 
                 # Create feedback
                 from bot.models import Feedback
+                from django.db import connection
+                
+                # Check if table exists
+                with connection.cursor() as cursor:
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT FROM information_schema.tables 
+                            WHERE table_name = 'bot_feedback'
+                        );
+                    """)
+                    table_exists = cursor.fetchone()[0]
+                
+                if not table_exists:
+                    bot.reply_to(
+                        message,
+                        "❌ Feedback system is not yet set up. Please contact an administrator.\n\n"
+                        "Admin: Run 'python manage.py migrate bot' to enable feedback."
+                    )
+                    del user_states[telegram_id]
+                    return
+                
                 feedback = Feedback.objects.create(
                     user=user,
                     text=feedback_text
@@ -2116,8 +2137,8 @@ Use /viewfeedback to see all feedback.
                 return
                 
             except Exception as e:
-                bot.reply_to(message, "❌ Failed to submit feedback. Please try again.")
-                logger.error(f"Error creating feedback: {e}")
+                bot.reply_to(message, f"❌ Failed to submit feedback. Please try again.\n\nError: {str(e)[:100]}")
+                logger.error(f"Error creating feedback: {e}", exc_info=True)
                 del user_states[telegram_id]
                 return
         
