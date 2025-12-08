@@ -11,7 +11,7 @@ from django.db import DatabaseError
 
 logger = logging.getLogger(__name__)
 
-PAGE_SIZE = 5
+PAGE_SIZE = 20  # Increased from 5 to show more comments per page
 
 
 def format_timestamp(dt):
@@ -61,6 +61,8 @@ def build_comment_text(comment):
     Great perspective on this situation...
     👤 • ⭐ -11 • 😈 1.58
     🕒 Dec 3, 2024 • 02:30 PM
+    
+    [Replies if any]
     """
     from bot.services.user_service import calculate_impact_points, calculate_acceptance_score
     from bot.models import Reaction
@@ -70,6 +72,8 @@ def build_comment_text(comment):
     
     # Comment text (truncated to 400 chars)
     comment_snippet = comment.text[:400]
+    if len(comment.text) > 400:
+        comment_snippet += "..."
     comment_text += f"{comment_snippet}\n\n"
     
     # User stats line
@@ -89,6 +93,22 @@ def build_comment_text(comment):
     # Timestamp
     timestamp = format_timestamp(comment.created_at)
     comment_text += f"🕒 {timestamp}"
+    
+    # Add replies if any
+    replies = comment.replies.all().order_by('created_at')[:5]  # Show first 5 replies
+    reply_count = comment.replies.count()
+    
+    if reply_count > 0:
+        comment_text += f"\n\n💬 <b>{reply_count} {'Reply' if reply_count == 1 else 'Replies'}:</b>\n"
+        
+        for idx, reply in enumerate(replies, 1):
+            reply_text = reply.text[:150]
+            if len(reply.text) > 150:
+                reply_text += "..."
+            comment_text += f"\n  {idx}. {reply_text}"
+        
+        if reply_count > 5:
+            comment_text += f"\n\n  <i>... and {reply_count - 5} more replies</i>"
     
     return comment_text
 
