@@ -61,9 +61,13 @@ def build_comment_text(comment, is_reply=False):
     Great perspective on this situation...
     👤 • ⭐ -11 • 😈 1.58
     🕒 Dec 3, 2024 • 02:30 PM
+    #venter (if commenter is the confession author)
     """
     from bot.services.user_service import calculate_impact_points, calculate_acceptance_score
     from bot.models import Reaction
+    
+    # Check if commenter is the confession author
+    is_venter = comment.user_id == comment.confession.user_id
     
     # Author (with reply indicator if it's a reply)
     if is_reply:
@@ -94,6 +98,10 @@ def build_comment_text(comment, is_reply=False):
     # Timestamp
     timestamp = format_timestamp(comment.created_at)
     comment_text += f"🕒 {timestamp}"
+    
+    # Add #venter tag if commenter is the confession author
+    if is_venter:
+        comment_text += "\n\n<i>#venter</i>"
     
     # For parent comments, show reply count (but not the replies themselves)
     if not is_reply:
