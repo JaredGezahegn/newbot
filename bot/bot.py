@@ -173,11 +173,7 @@ def rebuild_comment_view(comment, chat_id, message_id):
     response_text += f"<i>{confession_preview}</i>\n\n"
     response_text += f"<b>Comment {current_page} of {total_comments}</b>\n\n"
     
-    commenter_name = comment.user.first_name
-    if comment.user.username:
-        commenter_name += f" (@{comment.user.username})"
-    
-    response_text += f"<b>By:</b> {commenter_name}\n"
+    # Comments are anonymous - don't show commenter identity
     response_text += f"<b>Comment:</b>\n{comment.text}\n\n"
     response_text += f"👍 {comment.like_count}  |  👎 {comment.dislike_count}  |  🚩 {comment.report_count}\n"
     
@@ -1101,13 +1097,10 @@ def comments_command(message: Message):
         response_text += f"<b>Comments (Page {comments_data['current_page']} of {comments_data['total_pages']}):</b>\n\n"
         
         for comment in comments_data['comments']:
-            commenter_name = comment.user.first_name
-            if comment.user.username:
-                commenter_name += f" (@{comment.user.username})"
-            
+            # Comments are anonymous - don't show commenter identity
             comment_text = comment.text[:150] + "..." if len(comment.text) > 150 else comment.text
             
-            response_text += f"<b>Comment #{comment.id}</b> by {commenter_name}\n"
+            response_text += f"<b>Comment #{comment.id}</b>\n"
             response_text += f"{comment_text}\n"
             response_text += f"👍 {comment.like_count} | 👎 {comment.dislike_count} | 🚩 {comment.report_count}\n"
             response_text += f"<i>{comment.created_at.strftime('%Y-%m-%d %H:%M')}</i>\n\n"
@@ -1895,13 +1888,13 @@ def handle_reply_comment(call: CallbackQuery):
             }
         }
         
-        # Show comment preview
+        # Show comment preview (without revealing commenter identity)
         comment_preview = comment.text[:200] + "..." if len(comment.text) > 200 else comment.text
         
         response_text = f"""
 💬 <b>Reply to Comment</b>
 
-<b>Original Comment by {comment.user.first_name}:</b>
+<b>Original Comment:</b>
 {comment_preview}
 
 Please type your reply below. You can write up to 1000 characters.
