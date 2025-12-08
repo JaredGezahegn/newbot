@@ -54,21 +54,22 @@ def get_acceptance_emoji(acceptance_score, has_reactions):
         return "😇"
 
 
-def build_comment_text(comment):
+def build_comment_text(comment, is_reply=False):
     """
     Build comment text following guideline format:
     Anonymous
     Great perspective on this situation...
     👤 • ⭐ -11 • 😈 1.58
     🕒 Dec 3, 2024 • 02:30 PM
-    
-    [Replies if any]
     """
     from bot.services.user_service import calculate_impact_points, calculate_acceptance_score
     from bot.models import Reaction
     
-    # Author
-    comment_text = "<b>Anonymous</b>\n"
+    # Author (with reply indicator if it's a reply)
+    if is_reply:
+        comment_text = "  ↳ <b>Anonymous</b> <i>(Reply)</i>\n"
+    else:
+        comment_text = "<b>Anonymous</b>\n"
     
     # Comment text (truncated to 400 chars)
     comment_snippet = comment.text[:400]
@@ -94,21 +95,11 @@ def build_comment_text(comment):
     timestamp = format_timestamp(comment.created_at)
     comment_text += f"🕒 {timestamp}"
     
-    # Add replies if any
-    replies = comment.replies.all().order_by('created_at')[:5]  # Show first 5 replies
-    reply_count = comment.replies.count()
-    
-    if reply_count > 0:
-        comment_text += f"\n\n💬 <b>{reply_count} {'Reply' if reply_count == 1 else 'Replies'}:</b>\n"
-        
-        for idx, reply in enumerate(replies, 1):
-            reply_text = reply.text[:150]
-            if len(reply.text) > 150:
-                reply_text += "..."
-            comment_text += f"\n  {idx}. {reply_text}"
-        
-        if reply_count > 5:
-            comment_text += f"\n\n  <i>... and {reply_count - 5} more replies</i>"
+    # For parent comments, show reply count (but not the replies themselves)
+    if not is_reply:
+        reply_count = comment.replies.count()
+        if reply_count > 0:
+            comment_text += f"\n\n💬 <i>{reply_count} {'reply' if reply_count == 1 else 'replies'} below</i>"
     
     return comment_text
 
@@ -148,9 +139,9 @@ def build_comment_keyboard(comment):
     return keyboard
 
 
-def send_comment_message(bot, chat_id, comment):
+def send_comment_message(bot, chat_id, comment, is_reply=False):
     """Send a single comment as a separate message"""
-    comment_text = build_comment_text(comment)
+    comment_text = build_comment_text(comment, is_reply=is_reply)
     comment_keyboard = build_comment_keyboard(comment)
     
     bot.send_message(
@@ -268,7 +259,13 @@ def show_comments_for_confession(bot, chat_id, confession_id, page=1):
             bot.send_message(chat_id, "No comments yet. Be the first to comment!")
         else:
             for comment in comments_data['comments']:
+                # Send parent comment
                 send_comment_message(bot, chat_id, comment)
+                
+                # Send replies as separate messages with their own buttons
+                replies = comment.replies.all().order_by('created_at')[:5]
+                for reply in replies:
+                    send_comment_message(bot, chat_id, reply, is_reply=True)
         
     except Exception as e:
         logger.error(f"Error in show_comments_for_confession: {e}")
