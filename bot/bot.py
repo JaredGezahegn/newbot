@@ -1,5 +1,6 @@
 import time, re
 import logging
+from datetime import datetime, timedelta
 from django.conf import settings
 from django.utils import timezone
 from django.db import DatabaseError, IntegrityError
@@ -25,8 +26,57 @@ logger = logging.getLogger(__name__)
 bot = TeleBot(settings.BOT_TOKEN, parse_mode="HTML", threaded=False)
 
 # Dictionary to store user conversation states
-# Format: {user_id: {'state': 'waiting_confession_text', 'data': {...}}}
+# Format: {user_id: {'state': 'waiting_confession_text', 'data': {...}, 'timestamp': datetime}}
 user_states = {}
+
+# Timeout for user states (in seconds) - 5 minutes
+USER_STATE_TIMEOUT = 300
+
+
+def clean_expired_user_states():
+    """Remove user states that have expired due to inactivity"""
+    current_time = datetime.now()
+    expired_users = []
+    
+    for user_id, state_data in user_states.items():
+        if 'timestamp' in state_data:
+            time_diff = current_time - state_data['timestamp']
+            if time_diff.total_seconds() > USER_STATE_TIMEOUT:
+                expired_users.append(user_id)
+    
+    for user_id in expired_users:
+        logger.info(f"Cleaning expired state for user {user_id}")
+        del user_states[user_id]
+
+
+def set_user_state(user_id, state, data=None):
+    """Set user state with timestamp"""
+    user_states[user_id] = {
+        'state': state,
+        'data': data or {},
+        'timestamp': datetime.now()
+    }
+
+
+def update_user_state_timestamp(user_id):
+    """Update timestamp for existing user state"""
+    if user_id in user_states:
+        user_states[user_id]['timestamp'] = datetime.now()
+
+
+def check_user_state_timeout(user_id):
+    """Check if user state has timed out and clean if necessary"""
+    if user_id in user_states:
+        current_time = datetime.now()
+        state_time = user_states[user_id].get('timestamp', current_time)
+        time_diff = current_time - state_time
+        
+        if time_diff.total_seconds() > USER_STATE_TIMEOUT:
+            state = user_states[user_id].get('state', 'unknown')
+            del user_states[user_id]
+            return True, state
+    
+    return False, None
 
 
 # Helper functions for error handling and validation
@@ -314,6 +364,7 @@ def help_command(message: Message):
 • /pending - View all pending confessions
 • /stats - View system statistics
 • /delete [id] - Delete a confession by ID
+• /feedbackhelp - View feedback management commands
 
 <b>About Anonymity:</b>
 When anonymous mode is ON ✅, your confessions will be posted without your name.
@@ -608,10 +659,7 @@ def confess_command(message: Message):
             return
         
         # Set user state to waiting for confession text
-        user_states[telegram_id] = {
-            'state': 'waiting_confession_text',
-            'data': {}
-        }
+        set_user_state(telegram_id, 'waiting_confession_text')
         
         # Inform user about their current anonymity setting
         anonymity_status = "anonymously" if user.is_anonymous_mode else "with your name"
@@ -980,6 +1028,300 @@ def resolve_feedback_command(message: Message):
         logger.error(f"Error in resolve_feedback: {e}", exc_info=True)
 
 
+@bot.message_handler(commands=['addnote'])
+def add_feedback_note_command(message: Message):
+    """Handle /addnote <id> <note> command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    try:
+        # Parse feedback ID and note
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            bot.reply_to(message, "❌ Usage: /addnote <id> <note>\n\nExample: /addnote 5 Fixed the bug mentioned in this feedback")
+            return
+        
+        feedback_id = int(parts[1])
+        note_text = parts[2]
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Add note to existing admin notes
+        current_notes = feedback.admin_notes or ""
+        timestamp = timezone.now().strftime('%b %d, %Y • %I:%M %p')
+        admin_name = admin_user.username or admin_user.first_name
+        
+        new_note = f"[{timestamp}] {admin_name}: {note_text}"
+        
+        if current_notes:
+            feedback.admin_notes = current_notes + "\n\n" + new_note
+        else:
+            feedback.admin_notes = new_note
+        
+        # Update review info
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        if feedback.status == 'pending':
+            feedback.status = 'reviewed'
+        
+        feedback.save()
+        
+        bot.reply_to(
+            message, 
+            f"✅ Note added to feedback #{feedback_id}.\n\n<b>Note:</b> {note_text}",
+            parse_mode='HTML'
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid feedback ID. Please provide a number.")
+    except Feedback.DoesNotExist:
+        bot.reply_to(message, "❌ Feedback not found.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error adding note.\n\nError: {str(e)[:200]}")
+        logger.error(f"Error in add_feedback_note: {e}", exc_info=True)
+
+
+@bot.message_handler(commands=['categorize'])
+def categorize_feedback_command(message: Message):
+    """Handle /categorize <id> <category> command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    try:
+        # Parse feedback ID and category
+        parts = message.text.split(maxsplit=2)
+        if len(parts) < 3:
+            categories = "bug, feature, improvement, question, complaint, praise, other"
+            bot.reply_to(message, f"❌ Usage: /categorize <id> <category>\n\n<b>Available categories:</b>\n{categories}\n\nExample: /categorize 5 bug")
+            return
+        
+        feedback_id = int(parts[1])
+        category = parts[2].lower()
+        
+        # Validate category
+        valid_categories = ['bug', 'feature', 'improvement', 'question', 'complaint', 'praise', 'other']
+        if category not in valid_categories:
+            bot.reply_to(message, f"❌ Invalid category. Choose from: {', '.join(valid_categories)}")
+            return
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Update category (store in admin_notes for now since we don't have a category field)
+        timestamp = timezone.now().strftime('%b %d, %Y • %I:%M %p')
+        admin_name = admin_user.username or admin_user.first_name
+        
+        category_note = f"[{timestamp}] {admin_name}: Categorized as '{category.upper()}'"
+        
+        current_notes = feedback.admin_notes or ""
+        if current_notes:
+            feedback.admin_notes = current_notes + "\n\n" + category_note
+        else:
+            feedback.admin_notes = category_note
+        
+        # Update review info
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        if feedback.status == 'pending':
+            feedback.status = 'reviewed'
+        
+        feedback.save()
+        
+        category_emoji = {
+            'bug': '🐛',
+            'feature': '✨',
+            'improvement': '🔧',
+            'question': '❓',
+            'complaint': '😠',
+            'praise': '👏',
+            'other': '📝'
+        }.get(category, '📝')
+        
+        bot.reply_to(
+            message, 
+            f"✅ Feedback #{feedback_id} categorized as {category_emoji} <b>{category.upper()}</b>",
+            parse_mode='HTML'
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid feedback ID. Please provide a number.")
+    except Feedback.DoesNotExist:
+        bot.reply_to(message, "❌ Feedback not found.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error categorizing feedback.\n\nError: {str(e)[:200]}")
+        logger.error(f"Error in categorize_feedback: {e}", exc_info=True)
+
+
+@bot.message_handler(commands=['priority'])
+def set_feedback_priority_command(message: Message):
+    """Handle /priority <id> <level> command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    try:
+        # Parse feedback ID and priority
+        parts = message.text.split()
+        if len(parts) != 3:
+            bot.reply_to(message, "❌ Usage: /priority <id> <level>\n\n<b>Priority levels:</b>\nlow, medium, high, urgent\n\nExample: /priority 5 high")
+            return
+        
+        feedback_id = int(parts[1])
+        priority = parts[2].lower()
+        
+        # Validate priority
+        valid_priorities = ['low', 'medium', 'high', 'urgent']
+        if priority not in valid_priorities:
+            bot.reply_to(message, f"❌ Invalid priority. Choose from: {', '.join(valid_priorities)}")
+            return
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Update priority (store in admin_notes)
+        timestamp = timezone.now().strftime('%b %d, %Y • %I:%M %p')
+        admin_name = admin_user.username or admin_user.first_name
+        
+        priority_note = f"[{timestamp}] {admin_name}: Priority set to '{priority.upper()}'"
+        
+        current_notes = feedback.admin_notes or ""
+        if current_notes:
+            feedback.admin_notes = current_notes + "\n\n" + priority_note
+        else:
+            feedback.admin_notes = priority_note
+        
+        # Update review info
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        if feedback.status == 'pending':
+            feedback.status = 'reviewed'
+        
+        feedback.save()
+        
+        priority_emoji = {
+            'low': '🟢',
+            'medium': '🟡',
+            'high': '🟠',
+            'urgent': '🔴'
+        }.get(priority, '⚪')
+        
+        bot.reply_to(
+            message, 
+            f"✅ Feedback #{feedback_id} priority set to {priority_emoji} <b>{priority.upper()}</b>",
+            parse_mode='HTML'
+        )
+    except ValueError:
+        bot.reply_to(message, "❌ Invalid feedback ID. Please provide a number.")
+    except Feedback.DoesNotExist:
+        bot.reply_to(message, "❌ Feedback not found.")
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error setting priority.\n\nError: {str(e)[:200]}")
+        logger.error(f"Error in set_feedback_priority: {e}", exc_info=True)
+
+
+@bot.message_handler(commands=['feedbackstats'])
+def feedback_stats_command(message: Message):
+    """Handle /feedbackstats command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    try:
+        from bot.models import Feedback
+        
+        # Get statistics
+        total_feedback = Feedback.objects.count()
+        pending_count = Feedback.objects.filter(status='pending').count()
+        reviewed_count = Feedback.objects.filter(status='reviewed').count()
+        resolved_count = Feedback.objects.filter(status='resolved').count()
+        
+        # Get recent feedback (last 7 days)
+        from datetime import timedelta
+        week_ago = timezone.now() - timedelta(days=7)
+        recent_count = Feedback.objects.filter(created_at__gte=week_ago).count()
+        
+        response = f"""
+📊 <b>Feedback Statistics</b>
+
+<b>Total Feedback:</b> {total_feedback}
+
+<b>By Status:</b>
+🟡 Pending: {pending_count}
+🔵 Reviewed: {reviewed_count}
+🟢 Resolved: {resolved_count}
+
+<b>Recent Activity:</b>
+📅 Last 7 days: {recent_count} new feedback
+
+<b>Response Rate:</b>
+{((reviewed_count + resolved_count) / max(total_feedback, 1) * 100):.1f}% of feedback has been addressed
+
+<i>Last updated: {timezone.now().strftime('%b %d, %Y • %I:%M %p')}</i>
+        """
+        
+        bot.reply_to(message, response, parse_mode='HTML')
+    except Exception as e:
+        bot.reply_to(message, f"❌ Error retrieving feedback statistics.\n\nError: {str(e)[:200]}")
+        logger.error(f"Error in feedback_stats: {e}", exc_info=True)
+
+
+@bot.message_handler(commands=['feedbackhelp'])
+def feedback_help_command(message: Message):
+    """Handle /feedbackhelp command - admin only"""
+    telegram_id = message.from_user.id
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ This command is only available to administrators.")
+        return
+    
+    help_text = """
+📚 <b>Feedback Management Commands</b>
+
+<b>📋 Viewing Feedback:</b>
+• <code>/viewfeedback</code> - List recent feedback
+• <code>/feedback &lt;id&gt;</code> - View specific feedback details
+• <code>/feedbackstats</code> - View feedback statistics
+
+<b>🏷️ Organizing Feedback:</b>
+• <code>/categorize &lt;id&gt; &lt;category&gt;</code> - Categorize feedback
+  Categories: bug, feature, improvement, question, complaint, praise, other
+• <code>/priority &lt;id&gt; &lt;level&gt;</code> - Set priority level
+  Levels: low, medium, high, urgent
+
+<b>📝 Managing Feedback:</b>
+• <code>/addnote &lt;id&gt; &lt;note&gt;</code> - Add admin note
+• <code>/resolvefeedback &lt;id&gt;</code> - Mark as resolved
+
+<b>💡 Examples:</b>
+<code>/categorize 5 bug</code>
+<code>/priority 5 high</code>
+<code>/addnote 5 Fixed in version 2.1</code>
+<code>/resolvefeedback 5</code>
+
+<b>🔄 Workflow Suggestion:</b>
+1. View new feedback with <code>/viewfeedback</code>
+2. Categorize with <code>/categorize</code>
+3. Set priority with <code>/priority</code>
+4. Add progress notes with <code>/addnote</code>
+5. Mark resolved with <code>/resolvefeedback</code>
+    """
+    
+    bot.reply_to(message, help_text, parse_mode='HTML')
+
+
 @bot.message_handler(commands=['comment'])
 def comment_command(message: Message):
     """Handle /comment command - add a comment to a confession"""
@@ -1018,12 +1360,7 @@ def comment_command(message: Message):
             return
         
         # Set user state to waiting for comment text
-        user_states[telegram_id] = {
-            'state': 'waiting_comment_text',
-            'data': {
-                'confession_id': confession_id
-            }
-        }
+        set_user_state(telegram_id, 'waiting_comment_text', {'confession_id': confession_id})
         
         # Show confession preview
         confession_preview = confession.text[:200] + "..." if len(confession.text) > 200 else confession.text
@@ -1627,12 +1964,7 @@ def handle_add_comment_button(call: CallbackQuery):
             return
         
         # Set user state to waiting for comment text
-        user_states[telegram_id] = {
-            'state': 'waiting_comment_text',
-            'data': {
-                'confession_id': confession_id
-            }
-        }
+        set_user_state(telegram_id, 'waiting_comment_text', {'confession_id': confession_id})
         
         # Show confession preview
         confession_preview = confession.text[:200] + "..." if len(confession.text) > 200 else confession.text
@@ -1880,13 +2212,10 @@ def handle_reply_comment(call: CallbackQuery):
             return
         
         # Set user state to waiting for reply text
-        user_states[telegram_id] = {
-            'state': 'waiting_reply_text',
-            'data': {
-                'confession_id': comment.confession.id,
-                'parent_comment_id': comment_id
-            }
-        }
+        set_user_state(telegram_id, 'waiting_reply_text', {
+            'confession_id': comment.confession.id,
+            'parent_comment_id': comment_id
+        })
         
         # Show comment preview (without revealing commenter identity)
         comment_preview = comment.text[:200] + "..." if len(comment.text) > 200 else comment.text
@@ -1935,10 +2264,7 @@ def handle_send_feedback(call: CallbackQuery):
             user = register_with_retry()
         
         # Set user state to waiting for feedback
-        user_states[telegram_id] = {
-            'state': 'waiting_feedback_text',
-            'data': {}
-        }
+        set_user_state(telegram_id, 'waiting_feedback_text')
         
         bot.edit_message_text(
             "📝 <b>Anonymous Feedback</b>\n\n"
@@ -2002,8 +2328,39 @@ def handle_unknown_command(message: Message):
     """Handle unknown commands and messages"""
     telegram_id = message.from_user.id
     
+    # Clean expired states periodically
+    clean_expired_user_states()
+    
+    # Check if user state has timed out
+    timed_out, expired_state = check_user_state_timeout(telegram_id)
+    if timed_out:
+        timeout_message = f"""
+⏰ <b>Session Timed Out</b>
+
+Your {expired_state.replace('waiting_', '').replace('_', ' ')} session has expired due to inactivity (5 minutes).
+
+Please start over using the appropriate command:
+• /confess - to submit a confession
+• /comment <id> - to add a comment
+• Use the buttons below for other actions
+        """
+        
+        # Show main menu keyboard
+        from telebot.types import ReplyKeyboardMarkup, KeyboardButton
+        keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
+        keyboard.add(
+            KeyboardButton("✍️ Confess"),
+            KeyboardButton("👤 Profile"),
+            KeyboardButton("ℹ️ Help")
+        )
+        
+        bot.reply_to(message, timeout_message, reply_markup=keyboard)
+        return
+    
     # Check if user is in a conversation state
     if telegram_id in user_states:
+        # Update timestamp to show user is still active
+        update_user_state_timestamp(telegram_id)
         state = user_states[telegram_id].get('state')
         
         if state == 'waiting_confession_text':
@@ -2048,6 +2405,7 @@ def handle_unknown_command(message: Message):
             # Store the confession text and update state
             user_states[telegram_id]['state'] = 'waiting_confession_confirmation'
             user_states[telegram_id]['data']['text'] = confession_text
+            update_user_state_timestamp(telegram_id)
             
             # Show confirmation with preview
             anonymity_status = "anonymously" if user.is_anonymous_mode else "with your name"
@@ -2338,6 +2696,7 @@ I don't recognize that command. Here are the available commands:
 • /pending - View pending confessions
 • /stats - View system statistics
 • /delete <id> - Delete a confession
+• /feedbackhelp - Feedback management commands
 
 Use /help for more information.
         """
