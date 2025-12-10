@@ -923,6 +923,84 @@ def view_feedback_command(message: Message):
         logger.error(f"Error in view_feedback: {e}", exc_info=True)
 
 
+def notify_user_feedback_status(feedback, status_change, admin_name=None):
+    """Notify user when their feedback status changes"""
+    try:
+        user = feedback.user
+        
+        # Check if this is praise/supportive feedback for special message
+        is_praise = False
+        if feedback.admin_notes:
+            # Check if feedback was categorized as praise
+            is_praise = 'praise' in feedback.admin_notes.lower() or 'Categorized as \'PRAISE\'' in feedback.admin_notes
+        
+        # Base messages (admin stays anonymous)
+        if is_praise and status_change == 'resolved':
+            # Special appreciation message for praise feedback
+            message = f"""
+💝 <b>Thank You for Your Kind Words!</b>
+
+We received and appreciated your supportive feedback!
+
+<b>Your message:</b>
+{feedback.text[:200]}{'...' if len(feedback.text) > 200 else ''}
+
+<b>Status:</b> Acknowledged with Gratitude ✅
+
+Your encouragement means a lot to our team and motivates us to keep improving the bot. Thank you for taking the time to share your positive experience!
+
+We're grateful to have supportive users like you in our community! 🙏
+            """
+        else:
+            status_messages = {
+                'reviewed': f"""
+📬 <b>Feedback Update</b>
+
+Your feedback has been reviewed by our admin team.
+
+<b>Your feedback:</b>
+{feedback.text[:200]}{'...' if len(feedback.text) > 200 else ''}
+
+<b>Status:</b> Under Review 🔵
+
+We'll keep you updated on any progress!
+                """,
+                'resolved': f"""
+📬 <b>Feedback Resolved</b>
+
+Your feedback has been resolved!
+
+<b>Your feedback:</b>
+{feedback.text[:200]}{'...' if len(feedback.text) > 200 else ''}
+
+<b>Status:</b> Resolved ✅
+
+Thank you for helping us improve the bot!
+                """,
+                'reopened': f"""
+📬 <b>Feedback Reopened</b>
+
+Your feedback has been reopened for further review.
+
+<b>Your feedback:</b>
+{feedback.text[:200]}{'...' if len(feedback.text) > 200 else ''}
+
+<b>Status:</b> Under Review 🔵
+
+We're taking another look at your feedback.
+                """
+            }
+            message = status_messages.get(status_change)
+        
+        
+        if message:
+            bot.send_message(user.telegram_id, message, parse_mode='HTML')
+            logger.info(f"Notified user {user.telegram_id} about feedback #{feedback.id} status change: {status_change}")
+    
+    except Exception as e:
+        logger.error(f"Error notifying user about feedback status change: {e}")
+
+
 def send_feedback_with_buttons(bot, chat_id, feedback):
     """Send a single feedback item with action buttons"""
     status_emoji = {
@@ -1050,9 +1128,12 @@ def resolve_feedback_command(message: Message):
         feedback.reviewed_at = timezone.now()
         feedback.save()
         
+        # Notify the user
+        notify_user_feedback_status(feedback, 'resolved')
+        
         bot.reply_to(
             message, 
-            f"✅ Feedback #{feedback_id} marked as resolved.",
+            f"✅ Feedback #{feedback_id} marked as resolved. User has been notified.",
             parse_mode='HTML'
         )
     except ValueError:
@@ -2376,6 +2457,9 @@ def handle_resolve_feedback_button(call: CallbackQuery):
         feedback.reviewed_at = timezone.now()
         feedback.save()
         
+        # Notify the user
+        notify_user_feedback_status(feedback, 'resolved')
+        
         # Update the message with new status
         send_feedback_with_buttons(bot, call.message.chat.id, feedback)
         
@@ -2414,6 +2498,9 @@ def handle_review_feedback_button(call: CallbackQuery):
         feedback.reviewed_by = admin_user
         feedback.reviewed_at = timezone.now()
         feedback.save()
+        
+        # Notify the user
+        notify_user_feedback_status(feedback, 'reviewed')
         
         # Update the message with new status
         send_feedback_with_buttons(bot, call.message.chat.id, feedback)
@@ -2479,9 +2566,15 @@ def handle_reopen_feedback_button(call: CallbackQuery):
         from bot.models import Feedback
         feedback = Feedback.objects.get(id=feedback_id)
         
+        # Get admin user for notification
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
         # Update feedback
         feedback.status = 'reviewed'  # Reopen to reviewed status
         feedback.save()
+        
+        # Notify the user
+        notify_user_feedback_status(feedback, 'reopened')
         
         # Update the message with new status
         send_feedback_with_buttons(bot, call.message.chat.id, feedback)
