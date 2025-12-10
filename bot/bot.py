@@ -931,8 +931,16 @@ def notify_user_feedback_status(feedback, status_change, admin_name=None):
         # Check if this is praise/supportive feedback for special message
         is_praise = False
         if feedback.admin_notes:
-            # Check if feedback was categorized as praise
-            is_praise = 'praise' in feedback.admin_notes.lower() or 'Categorized as \'PRAISE\'' in feedback.admin_notes
+            # Check if feedback was categorized as praise (multiple variations)
+            admin_notes_lower = feedback.admin_notes.lower()
+            is_praise = (
+                'praise' in admin_notes_lower or 
+                'categorized as \'praise\'' in admin_notes_lower or
+                'categorized as "praise"' in admin_notes_lower or
+                'category: praise' in admin_notes_lower
+            )
+            # Debug logging
+            logger.info(f"Checking praise for feedback #{feedback.id}: admin_notes='{feedback.admin_notes}', is_praise={is_praise}")
         
         # Base messages (admin stays anonymous)
         if is_praise and status_change == 'resolved':
@@ -2458,6 +2466,7 @@ def handle_resolve_feedback_button(call: CallbackQuery):
         feedback.save()
         
         # Notify the user
+        logger.info(f"About to notify user for resolved feedback #{feedback.id} with admin_notes: '{feedback.admin_notes}'")
         notify_user_feedback_status(feedback, 'resolved')
         
         # Update the message with new status
