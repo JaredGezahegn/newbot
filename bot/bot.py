@@ -1509,6 +1509,8 @@ def cancel_command(message: Message):
             bot.reply_to(message, "❌ Comment submission cancelled.")
         elif state == 'waiting_reply_text':
             bot.reply_to(message, "❌ Reply submission cancelled.")
+        elif state == 'waiting_feedback_note':
+            bot.reply_to(message, "❌ Note addition cancelled.")
         else:
             bot.reply_to(message, "✅ Operation cancelled.")
     else:
@@ -2348,15 +2350,484 @@ def handle_back_to_main(call: CallbackQuery):
     bot.answer_callback_query(call.id)
 
 
+# Feedback management callback handlers
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('resolve_feedback_'))
+def handle_resolve_feedback_button(call: CallbackQuery):
+    """Handle resolve feedback button"""
+    logger.info(f"Resolve feedback button clicked: {call.data}")
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Update feedback
+        feedback.status = 'resolved'
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        feedback.save()
+        
+        # Update the message with new status
+        send_feedback_with_buttons(bot, call.message.chat.id, feedback)
+        
+        # Delete the old message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        
+        bot.answer_callback_query(call.id, "✅ Feedback marked as resolved!")
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error resolving feedback: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('review_feedback_'))
+def handle_review_feedback_button(call: CallbackQuery):
+    """Handle mark as reviewed button"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Update feedback
+        feedback.status = 'reviewed'
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        feedback.save()
+        
+        # Update the message with new status
+        send_feedback_with_buttons(bot, call.message.chat.id, feedback)
+        
+        # Delete the old message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        
+        bot.answer_callback_query(call.id, "✅ Feedback marked as reviewed!")
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error reviewing feedback: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('pending_feedback_'))
+def handle_pending_feedback_button(call: CallbackQuery):
+    """Handle mark as pending button"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Update feedback
+        feedback.status = 'pending'
+        feedback.save()
+        
+        # Update the message with new status
+        send_feedback_with_buttons(bot, call.message.chat.id, feedback)
+        
+        # Delete the old message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        
+        bot.answer_callback_query(call.id, "✅ Feedback marked as pending!")
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error marking feedback as pending: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('reopen_feedback_'))
+def handle_reopen_feedback_button(call: CallbackQuery):
+    """Handle reopen feedback button"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Update feedback
+        feedback.status = 'reviewed'  # Reopen to reviewed status
+        feedback.save()
+        
+        # Update the message with new status
+        send_feedback_with_buttons(bot, call.message.chat.id, feedback)
+        
+        # Delete the old message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        
+        bot.answer_callback_query(call.id, "✅ Feedback reopened!")
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error reopening feedback: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('add_note_feedback_'))
+def handle_add_note_feedback_button(call: CallbackQuery):
+    """Handle add note button - starts conversation for note input"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[3])
+        
+        # Set user state for note input
+        set_user_state(telegram_id, 'waiting_feedback_note', {'feedback_id': feedback_id})
+        
+        bot.edit_message_text(
+            f"📝 <b>Add Note to Feedback #{feedback_id}</b>\n\n"
+            "Please type your admin note below.\n\n"
+            "Use /cancel to cancel.",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            parse_mode='HTML'
+        )
+        
+        bot.answer_callback_query(call.id, "Type your note below")
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error starting note input: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('categorize_feedback_'))
+def handle_categorize_feedback_button(call: CallbackQuery):
+    """Handle categorize button - shows category selection"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        # Create category selection keyboard
+        keyboard = InlineKeyboardMarkup()
+        keyboard.row(
+            InlineKeyboardButton("🐛 Bug", callback_data=f"cat_bug_{feedback_id}"),
+            InlineKeyboardButton("✨ Feature", callback_data=f"cat_feature_{feedback_id}")
+        )
+        keyboard.row(
+            InlineKeyboardButton("🔧 Improvement", callback_data=f"cat_improvement_{feedback_id}"),
+            InlineKeyboardButton("❓ Question", callback_data=f"cat_question_{feedback_id}")
+        )
+        keyboard.row(
+            InlineKeyboardButton("😠 Complaint", callback_data=f"cat_complaint_{feedback_id}"),
+            InlineKeyboardButton("👏 Praise", callback_data=f"cat_praise_{feedback_id}")
+        )
+        keyboard.row(
+            InlineKeyboardButton("📝 Other", callback_data=f"cat_other_{feedback_id}"),
+            InlineKeyboardButton("🔙 Back", callback_data=f"back_feedback_{feedback_id}")
+        )
+        
+        bot.edit_message_text(
+            f"🏷️ <b>Categorize Feedback #{feedback_id}</b>\n\n"
+            "Select a category:",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+        
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error showing categories: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('priority_feedback_'))
+def handle_priority_feedback_button(call: CallbackQuery):
+    """Handle priority button - shows priority selection"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        # Create priority selection keyboard
+        keyboard = InlineKeyboardMarkup()
+        keyboard.row(
+            InlineKeyboardButton("🔴 Urgent", callback_data=f"pri_urgent_{feedback_id}"),
+            InlineKeyboardButton("🟠 High", callback_data=f"pri_high_{feedback_id}")
+        )
+        keyboard.row(
+            InlineKeyboardButton("🟡 Medium", callback_data=f"pri_medium_{feedback_id}"),
+            InlineKeyboardButton("🟢 Low", callback_data=f"pri_low_{feedback_id}")
+        )
+        keyboard.row(
+            InlineKeyboardButton("🔙 Back", callback_data=f"back_feedback_{feedback_id}")
+        )
+        
+        bot.edit_message_text(
+            f"⚡ <b>Set Priority for Feedback #{feedback_id}</b>\n\n"
+            "Select a priority level:",
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+        
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error showing priorities: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('cat_'))
+def handle_category_selection(call: CallbackQuery):
+    """Handle category selection"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        parts = call.data.split('_')
+        category = parts[1]
+        feedback_id = int(parts[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Add category note
+        timestamp = timezone.now().strftime('%b %d, %Y • %I:%M %p')
+        admin_name = admin_user.username or admin_user.first_name
+        category_note = f"[{timestamp}] {admin_name}: Categorized as '{category.upper()}'"
+        
+        current_notes = feedback.admin_notes or ""
+        if current_notes:
+            feedback.admin_notes = current_notes + "\n\n" + category_note
+        else:
+            feedback.admin_notes = category_note
+        
+        # Update review info
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        if feedback.status == 'pending':
+            feedback.status = 'reviewed'
+        
+        feedback.save()
+        
+        # Show updated feedback
+        send_feedback_with_buttons(bot, call.message.chat.id, feedback)
+        
+        # Delete the old message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        
+        category_emoji = {
+            'bug': '🐛', 'feature': '✨', 'improvement': '🔧',
+            'question': '❓', 'complaint': '😠', 'praise': '👏', 'other': '📝'
+        }.get(category, '📝')
+        
+        bot.answer_callback_query(call.id, f"✅ Categorized as {category_emoji} {category.upper()}")
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error setting category: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('pri_'))
+def handle_priority_selection(call: CallbackQuery):
+    """Handle priority selection"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        parts = call.data.split('_')
+        priority = parts[1]
+        feedback_id = int(parts[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Get admin user
+        admin_user = User.objects.get(telegram_id=telegram_id)
+        
+        # Add priority note
+        timestamp = timezone.now().strftime('%b %d, %Y • %I:%M %p')
+        admin_name = admin_user.username or admin_user.first_name
+        priority_note = f"[{timestamp}] {admin_name}: Priority set to '{priority.upper()}'"
+        
+        current_notes = feedback.admin_notes or ""
+        if current_notes:
+            feedback.admin_notes = current_notes + "\n\n" + priority_note
+        else:
+            feedback.admin_notes = priority_note
+        
+        # Update review info
+        feedback.reviewed_by = admin_user
+        feedback.reviewed_at = timezone.now()
+        if feedback.status == 'pending':
+            feedback.status = 'reviewed'
+        
+        feedback.save()
+        
+        # Show updated feedback
+        send_feedback_with_buttons(bot, call.message.chat.id, feedback)
+        
+        # Delete the old message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        
+        priority_emoji = {
+            'low': '🟢', 'medium': '🟡', 'high': '🟠', 'urgent': '🔴'
+        }.get(priority, '⚪')
+        
+        bot.answer_callback_query(call.id, f"✅ Priority set to {priority_emoji} {priority.upper()}")
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error setting priority: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('back_feedback_'))
+def handle_back_to_feedback(call: CallbackQuery):
+    """Handle back button - return to feedback view"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Show feedback with buttons
+        send_feedback_with_buttons(bot, call.message.chat.id, feedback)
+        
+        # Delete the old message
+        try:
+            bot.delete_message(call.message.chat.id, call.message.message_id)
+        except:
+            pass
+        
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error going back to feedback: {e}")
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('details_feedback_'))
+def handle_feedback_details(call: CallbackQuery):
+    """Handle view details button"""
+    telegram_id = call.from_user.id
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Admin access required.")
+        return
+    
+    try:
+        feedback_id = int(call.data.split('_')[2])
+        
+        from bot.models import Feedback
+        feedback = Feedback.objects.get(id=feedback_id)
+        
+        # Show detailed view
+        status_emoji = {
+            'pending': '🟡',
+            'reviewed': '🔵', 
+            'resolved': '🟢'
+        }.get(feedback.status, '⚪')
+        
+        details_text = f"""
+{status_emoji} <b>Feedback #{feedback.id} - Detailed View</b>
+
+<b>Status:</b> {feedback.status.title()}
+<b>Submitted:</b> {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}
+
+<b>Full Feedback:</b>
+{feedback.text}
+        """
+        
+        if feedback.reviewed_by:
+            details_text += f"\n\n<b>Reviewed by:</b> {feedback.reviewed_by.username or feedback.reviewed_by.first_name}"
+            details_text += f"\n<b>Reviewed at:</b> {feedback.reviewed_at.strftime('%b %d, %Y • %I:%M %p')}"
+        
+        if feedback.admin_notes:
+            details_text += f"\n\n<b>Admin Notes:</b>\n{feedback.admin_notes}"
+        
+        # Create back button
+        keyboard = InlineKeyboardMarkup()
+        keyboard.row(
+            InlineKeyboardButton("🔙 Back to Actions", callback_data=f"back_feedback_{feedback_id}")
+        )
+        
+        bot.edit_message_text(
+            details_text,
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            parse_mode='HTML',
+            reply_markup=keyboard
+        )
+        
+        bot.answer_callback_query(call.id)
+        
+    except Exception as e:
+        bot.answer_callback_query(call.id, "❌ Error occurred.")
+        logger.error(f"Error showing feedback details: {e}")
+
+
+# Debug callback handler - should be LAST callback handler
 @bot.callback_query_handler(func=lambda call: True)
 def handle_unknown_callback(call: CallbackQuery):
-    """Handle unknown callback queries"""
-    logger.warning(f"Unknown callback query received: {call.data}")
-    bot.answer_callback_query(
-        call.id,
-        "❌ This button action is not recognized. Please try again or use /help for assistance.",
-        show_alert=True
-    )
+    """Handle unknown callback queries for debugging"""
+    logger.error(f"Unknown callback data: {call.data}")
+    bot.answer_callback_query(call.id, f"❌ This button action is not recognized: {call.data}")
 
 
 @bot.message_handler(func=lambda message: True)
@@ -2468,6 +2939,61 @@ Do you want to submit this confession?
             )
             
             bot.reply_to(message, confirmation_text, reply_markup=keyboard)
+            return
+        
+        elif state == 'waiting_feedback_note':
+            # User is adding a note to feedback
+            note_text = message.text.strip()
+            
+            if len(note_text) > 1000:
+                bot.reply_to(message, "❌ Note is too long. Please keep it under 1000 characters.")
+                return
+            
+            if len(note_text) < 5:
+                bot.reply_to(message, "❌ Note is too short. Please provide at least 5 characters.")
+                return
+            
+            try:
+                feedback_id = user_states[telegram_id]['data']['feedback_id']
+                
+                from bot.models import Feedback
+                feedback = Feedback.objects.get(id=feedback_id)
+                
+                # Get admin user
+                admin_user = User.objects.get(telegram_id=telegram_id)
+                
+                # Add note to existing admin notes
+                timestamp = timezone.now().strftime('%b %d, %Y • %I:%M %p')
+                admin_name = admin_user.username or admin_user.first_name
+                new_note = f"[{timestamp}] {admin_name}: {note_text}"
+                
+                current_notes = feedback.admin_notes or ""
+                if current_notes:
+                    feedback.admin_notes = current_notes + "\n\n" + new_note
+                else:
+                    feedback.admin_notes = new_note
+                
+                # Update review info
+                feedback.reviewed_by = admin_user
+                feedback.reviewed_at = timezone.now()
+                if feedback.status == 'pending':
+                    feedback.status = 'reviewed'
+                
+                feedback.save()
+                
+                # Clear user state
+                del user_states[telegram_id]
+                
+                # Send updated feedback with buttons
+                send_feedback_with_buttons(bot, message.chat.id, feedback)
+                
+                bot.reply_to(message, f"✅ Note added to feedback #{feedback_id}")
+                
+            except Exception as e:
+                bot.reply_to(message, f"❌ Error adding note: {str(e)[:100]}")
+                logger.error(f"Error adding feedback note: {e}")
+                del user_states[telegram_id]
+            
             return
         
         elif state == 'waiting_feedback_text':
