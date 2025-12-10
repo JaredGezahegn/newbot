@@ -904,32 +904,89 @@ def view_feedback_command(message: Message):
     try:
         from bot.models import Feedback
         # Get recent feedback (last 10)
-        feedbacks = Feedback.objects.all()[:10]
+        feedbacks = Feedback.objects.all().order_by('-created_at')[:10]
         
         if not feedbacks:
             bot.reply_to(message, "📭 No feedback received yet.")
             return
         
-        response = "📬 <b>Recent Feedback</b>\n\n"
+        # Send header message
+        header_text = f"📬 <b>Recent Feedback ({feedbacks.count()} items)</b>\n\nEach feedback is shown below with action buttons:"
+        bot.reply_to(message, header_text, parse_mode='HTML')
         
+        # Send each feedback as separate message with buttons
         for feedback in feedbacks:
-            status_emoji = {
-                'pending': '🟡',
-                'reviewed': '🔵', 
-                'resolved': '🟢'
-            }.get(feedback.status, '⚪')
-            
-            response += f"{status_emoji} <b>#{feedback.id}</b> - {feedback.status.title()}\n"
-            response += f"📅 {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}\n"
-            response += f"💬 {feedback.text[:100]}{'...' if len(feedback.text) > 100 else ''}\n\n"
+            send_feedback_with_buttons(bot, message.chat.id, feedback)
         
-        response += "Use /feedback &lt;id&gt; to view full feedback\n"
-        response += "Use /resolvefeedback &lt;id&gt; to mark as resolved"
-        
-        bot.reply_to(message, response, parse_mode='HTML')
     except Exception as e:
         bot.reply_to(message, f"❌ Error retrieving feedback.\n\nError: {str(e)[:200]}")
         logger.error(f"Error in view_feedback: {e}", exc_info=True)
+
+
+def send_feedback_with_buttons(bot, chat_id, feedback):
+    """Send a single feedback item with action buttons"""
+    status_emoji = {
+        'pending': '🟡',
+        'reviewed': '🔵', 
+        'resolved': '🟢'
+    }.get(feedback.status, '⚪')
+    
+    # Build feedback text
+    feedback_text = f"""
+{status_emoji} <b>Feedback #{feedback.id}</b> - {feedback.status.title()}
+
+<b>Submitted:</b> {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}
+
+<b>Feedback:</b>
+{feedback.text}
+    """
+    
+    # Add admin notes if they exist
+    if feedback.admin_notes:
+        feedback_text += f"\n\n<b>Admin Notes:</b>\n{feedback.admin_notes}"
+    
+    # Add review info if reviewed
+    if feedback.reviewed_by:
+        feedback_text += f"\n\n<b>Reviewed by:</b> {feedback.reviewed_by.username or feedback.reviewed_by.first_name}"
+        feedback_text += f"\n<b>Reviewed at:</b> {feedback.reviewed_at.strftime('%b %d, %Y • %I:%M %p')}"
+    
+    # Create inline keyboard with action buttons
+    keyboard = InlineKeyboardMarkup()
+    
+    # Row 1: Quick actions based on status
+    if feedback.status == 'pending':
+        keyboard.row(
+            InlineKeyboardButton("✅ Resolve", callback_data=f"resolve_feedback_{feedback.id}"),
+            InlineKeyboardButton("👀 Mark Reviewed", callback_data=f"review_feedback_{feedback.id}")
+        )
+    elif feedback.status == 'reviewed':
+        keyboard.row(
+            InlineKeyboardButton("✅ Resolve", callback_data=f"resolve_feedback_{feedback.id}"),
+            InlineKeyboardButton("⏪ Mark Pending", callback_data=f"pending_feedback_{feedback.id}")
+        )
+    else:  # resolved
+        keyboard.row(
+            InlineKeyboardButton("🔄 Reopen", callback_data=f"reopen_feedback_{feedback.id}")
+        )
+    
+    # Row 2: Management actions
+    keyboard.row(
+        InlineKeyboardButton("📝 Add Note", callback_data=f"add_note_feedback_{feedback.id}"),
+        InlineKeyboardButton("🏷️ Categorize", callback_data=f"categorize_feedback_{feedback.id}")
+    )
+    
+    # Row 3: Priority and details
+    keyboard.row(
+        InlineKeyboardButton("⚡ Set Priority", callback_data=f"priority_feedback_{feedback.id}"),
+        InlineKeyboardButton("📊 View Details", callback_data=f"details_feedback_{feedback.id}")
+    )
+    
+    bot.send_message(
+        chat_id,
+        feedback_text,
+        parse_mode='HTML',
+        reply_markup=keyboard
+    )
 
 
 @bot.message_handler(commands=['feedback'])
@@ -952,30 +1009,9 @@ def view_single_feedback_command(message: Message):
         from bot.models import Feedback
         feedback = Feedback.objects.get(id=feedback_id)
         
-        status_emoji = {
-            'pending': '🟡',
-            'reviewed': '🔵', 
-            'resolved': '🟢'
-        }.get(feedback.status, '⚪')
+        # Use the same function to send feedback with buttons
+        send_feedback_with_buttons(bot, message.chat.id, feedback)
         
-        response = f"""
-{status_emoji} <b>Feedback #{feedback.id}</b>
-
-<b>Status:</b> {feedback.status.title()}
-<b>Submitted:</b> {feedback.created_at.strftime('%b %d, %Y • %I:%M %p')}
-
-<b>Feedback:</b>
-{feedback.text}
-        """
-        
-        if feedback.reviewed_by:
-            response += f"\n<b>Reviewed by:</b> {feedback.reviewed_by.username or feedback.reviewed_by.first_name}"
-            response += f"\n<b>Reviewed at:</b> {feedback.reviewed_at.strftime('%b %d, %Y • %I:%M %p')}"
-        
-        if feedback.admin_notes:
-            response += f"\n\n<b>Admin Notes:</b>\n{feedback.admin_notes}"
-        
-        bot.reply_to(message, response, parse_mode='HTML')
     except ValueError:
         bot.reply_to(message, "❌ Invalid feedback ID. Please provide a number.")
     except Feedback.DoesNotExist:
