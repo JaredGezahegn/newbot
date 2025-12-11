@@ -29,8 +29,8 @@ bot = TeleBot(settings.BOT_TOKEN, parse_mode="HTML", threaded=False)
 # Format: {user_id: {'state': 'waiting_confession_text', 'data': {...}, 'timestamp': datetime}}
 user_states = {}
 
-# Timeout for user states (in seconds) - 5 minutes
-USER_STATE_TIMEOUT = 300
+# Timeout for user states (in seconds) - 10 minutes (increased for confession writing)
+USER_STATE_TIMEOUT = 600
 
 
 def clean_expired_user_states():
@@ -3010,7 +3010,7 @@ def handle_unknown_command(message: Message):
         timeout_message = f"""
 ⏰ <b>Session Timed Out</b>
 
-Your {expired_state.replace('waiting_', '').replace('_', ' ')} session has expired due to inactivity (5 minutes).
+Your {expired_state.replace('waiting_', '').replace('_', ' ')} session has expired due to inactivity (10 minutes).
 
 Please start over using the appropriate command:
 • /confess - to submit a confession
@@ -3399,6 +3399,20 @@ Use /comments {confession_id} to view all comments on this confession.
                 bot.reply_to(message, error_text)
                 del user_states[telegram_id]
             
+            return
+        
+        # If user is in a state but we didn't handle it above, give them guidance
+        else:
+            state_guidance = {
+                'waiting_confession_text': "📝 Please type your confession text, or use the ❌ Cancel button to stop.",
+                'waiting_comment_text': "💬 Please type your comment text, or use /cancel to stop.",
+                'waiting_reply_text': "↩️ Please type your reply text, or use /cancel to stop.",
+                'waiting_feedback_text': "📝 Please type your feedback text, or use /cancel to stop.",
+                'waiting_feedback_note': "📝 Please type your admin note, or use /cancel to stop."
+            }
+            
+            guidance = state_guidance.get(state, "Please complete your current action or use /cancel to stop.")
+            bot.reply_to(message, guidance)
             return
     
     # Check if it's a command (starts with /)
