@@ -1,0 +1,2 @@
+# Placeholder file to ensure staticfiles directory exists for Vercel deployment
+# This directory will be populated by Django's collectstatic command during build
