@@ -1897,7 +1897,39 @@ def handle_approve_confession(call: CallbackQuery):
         
         # Check if confession is still pending
         if confession.status != 'pending':
-            bot.answer_callback_query(call.id, f"❌ This confession has already been {confession.status}.")
+            # Update the message to show current status
+            author = "Anonymous" if confession.is_anonymous else f"{confession.user.first_name}"
+            if not confession.is_anonymous and confession.user.username:
+                author += f" (@{confession.user.username})"
+            
+            preview_text = confession.text
+            if len(preview_text) > 200:
+                preview_text = preview_text[:200] + "..."
+            
+            status_emoji = {'approved': '✅', 'rejected': '❌'}.get(confession.status, '❓')
+            reviewed_by = confession.reviewed_by.first_name if confession.reviewed_by else "Unknown Admin"
+            
+            updated_text = f"""
+{status_emoji} <b>Confession Already {confession.status.title()}</b>
+
+<b>Confession ID {confession.id}</b>
+<b>From:</b> {author}
+<b>{confession.status.title()} by:</b> {reviewed_by}
+<b>{confession.status.title()} at:</b> {confession.reviewed_at.strftime('%Y-%m-%d %H:%M UTC') if confession.reviewed_at else 'Unknown'}
+
+<b>Preview:</b>
+{preview_text}
+
+<i>This confession was already processed by another admin.</i>
+            """
+            
+            bot.edit_message_text(
+                updated_text,
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='HTML'
+            )
+            bot.answer_callback_query(call.id, f"❌ This confession has already been {confession.status} by {reviewed_by}.")
             return
         
         # Get admin user
@@ -1990,7 +2022,39 @@ def handle_reject_confession(call: CallbackQuery):
         
         # Check if confession is still pending
         if confession.status != 'pending':
-            bot.answer_callback_query(call.id, f"❌ This confession has already been {confession.status}.")
+            # Update the message to show current status
+            author = "Anonymous" if confession.is_anonymous else f"{confession.user.first_name}"
+            if not confession.is_anonymous and confession.user.username:
+                author += f" (@{confession.user.username})"
+            
+            preview_text = confession.text
+            if len(preview_text) > 200:
+                preview_text = preview_text[:200] + "..."
+            
+            status_emoji = {'approved': '✅', 'rejected': '❌'}.get(confession.status, '❓')
+            reviewed_by = confession.reviewed_by.first_name if confession.reviewed_by else "Unknown Admin"
+            
+            updated_text = f"""
+{status_emoji} <b>Confession Already {confession.status.title()}</b>
+
+<b>Confession ID {confession.id}</b>
+<b>From:</b> {author}
+<b>{confession.status.title()} by:</b> {reviewed_by}
+<b>{confession.status.title()} at:</b> {confession.reviewed_at.strftime('%Y-%m-%d %H:%M UTC') if confession.reviewed_at else 'Unknown'}
+
+<b>Preview:</b>
+{preview_text}
+
+<i>This confession was already processed by another admin.</i>
+            """
+            
+            bot.edit_message_text(
+                updated_text,
+                call.message.chat.id,
+                call.message.message_id,
+                parse_mode='HTML'
+            )
+            bot.answer_callback_query(call.id, f"❌ This confession has already been {confession.status} by {reviewed_by}.")
             return
         
         # Get admin user
