@@ -3,7 +3,17 @@ import telebot
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
-from bot.bot import bot
+
+# Lazy import bot to avoid initialization issues
+_bot_instance = None
+
+def get_bot():
+    """Lazy load bot instance to avoid cold start issues"""
+    global _bot_instance
+    if _bot_instance is None:
+        from bot.bot import bot
+        _bot_instance = bot
+    return _bot_instance
 
 
 @csrf_exempt
@@ -31,6 +41,7 @@ def webhook(request, *args, **kwargs):
 
         update = telebot.types.Update.de_json(data)
 
+        bot = get_bot()
         bot.process_new_updates([update])
 
         return JsonResponse({"status": "ok"}, status=200)
@@ -45,4 +56,26 @@ def webhook(request, *args, **kwargs):
 
 def test(request):
     """Simple test endpoint to verify deployment"""
-    return JsonResponse({"status": "ok", "message": "Bot is running"}, status=200)
+    try:
+        # Test database connection
+        from django.db import connection
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+        
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
+    try:
+        # Test bot initialization
+        bot = get_bot()
+        bot_status = f"initialized (@{bot.get_me().username})"
+    except Exception as e:
+        bot_status = f"error: {str(e)}"
+    
+    return JsonResponse({
+        "status": "ok", 
+        "message": "Bot is running",
+        "database": db_status,
+        "bot": bot_status
+    }, status=200)
