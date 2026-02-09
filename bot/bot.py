@@ -19,11 +19,47 @@ from bot.services.confession_service import create_confession
 from bot.services.notification_service import notify_admins_new_confession, notify_user_confession_status
 from bot.models import User, Confession, Comment
 from bot.handlers import handle_view_comments, handle_comments_pagination, show_comments_for_confession, update_comment_message
+from bot.services.analytics_service import AnalyticsService
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 bot = TeleBot(settings.BOT_TOKEN, parse_mode="HTML", threaded=False)
+
+
+# Interaction tracking helper functions
+def track_interaction(telegram_id, interaction_type):
+    """
+    Track user interaction asynchronously without blocking bot operations.
+    
+    Args:
+        telegram_id: Telegram user ID
+        interaction_type: Type of interaction (message, command, button_click, etc.)
+    """
+    try:
+        # Get user - if user doesn't exist, skip tracking silently
+        user = User.objects.filter(telegram_id=telegram_id).first()
+        if user:
+            AnalyticsService.track_user_interaction(user, interaction_type)
+    except Exception as e:
+        # Log error but don't let tracking failures affect bot functionality
+        logger.warning(f"Failed to track interaction for user {telegram_id}: {e}")
+
+
+def track_message_interaction(message: Message):
+    """Track a message interaction."""
+    track_interaction(message.from_user.id, 'message')
+
+
+def track_command_interaction(message: Message, command_name: str):
+    """Track a command interaction."""
+    track_interaction(message.from_user.id, f'command_{command_name}')
+
+
+def track_button_interaction(call: CallbackQuery, button_type: str):
+    """Track a button click interaction."""
+    track_interaction(call.from_user.id, f'button_{button_type}')
+
 
 # Dictionary to store user conversation states
 # Format: {user_id: {'state': 'waiting_confession_text', 'data': {...}, 'timestamp': datetime}}
@@ -266,6 +302,9 @@ def rebuild_comment_view(comment, chat_id, message_id):
 @bot.message_handler(commands=['start'])
 def start_command(message: Message):
     """Handle /start command"""
+    # Track command interaction
+    track_command_interaction(message, 'start')
+    
     telegram_id = message.from_user.id
     user_name = message.from_user.first_name
     
@@ -321,10 +360,17 @@ def start_command(message: Message):
             logger.error(f"Error handling deep link: {e}", exc_info=True)
             # Fall through to normal start message
     
+    # Get monthly active users count
+    from bot.services.analytics_service import AnalyticsService
+    mau_count = AnalyticsService.get_monthly_active_users_count()
+    formatted_mau = AnalyticsService.format_user_count(mau_count)
+    
     welcome_text = f"""
 👋 <b>Hello {user_name}!</b>
 
 Welcome to the Anonymous Confession Bot!
+
+<b>Community:</b> {formatted_mau} monthly active users
 
 Use the buttons below to interact with the bot, or type /help for more information.
     """
@@ -343,8 +389,18 @@ Use the buttons below to interact with the bot, or type /help for more informati
 @bot.message_handler(commands=['help'])
 def help_command(message: Message):
     """Handle /help command"""
-    help_text = """
+    # Track command interaction
+    track_command_interaction(message, 'help')
+    
+    # Get monthly active users count
+    from bot.services.analytics_service import AnalyticsService
+    mau_count = AnalyticsService.get_monthly_active_users_count()
+    formatted_mau = AnalyticsService.format_user_count(mau_count)
+    
+    help_text = f"""
 <b>📚 Help Menu</b>
+
+<b>Community:</b> {formatted_mau} monthly active users
 
 <b>Main Buttons:</b>
 • ✍️ Confess - Submit a new confession
@@ -389,6 +445,9 @@ When a confession is approved, it's posted to the channel with a "View / Add Com
 @bot.message_handler(commands=['register'])
 def register_command(message: Message):
     """Handle /register command"""
+    # Track command interaction
+    track_command_interaction(message, 'register')
+    
     try:
         telegram_id = message.from_user.id
         first_name = message.from_user.first_name or "User"
@@ -454,6 +513,9 @@ Use the buttons below to get started!
 @bot.message_handler(commands=['anonymous_on'])
 def anonymous_on_command(message: Message):
     """Handle /anonymous_on command"""
+    # Track command interaction
+    track_command_interaction(message, 'anonymous_on')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -485,6 +547,9 @@ Your future confessions will be posted anonymously without your name.
 @bot.message_handler(commands=['anonymous_off'])
 def anonymous_off_command(message: Message):
     """Handle /anonymous_off command"""
+    # Track command interaction
+    track_command_interaction(message, 'anonymous_off')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -516,6 +581,9 @@ Your future confessions will be posted with your name.
 @bot.message_handler(commands=['profile'])
 def profile_command(message: Message):
     """Handle /profile command"""
+    # Track command interaction
+    track_command_interaction(message, 'profile')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -527,6 +595,11 @@ def profile_command(message: Message):
         
         # Get user stats
         stats = get_user_stats(user)
+        
+        # Get monthly active users count
+        from bot.services.analytics_service import AnalyticsService
+        mau_count = AnalyticsService.get_monthly_active_users_count()
+        formatted_mau = AnalyticsService.format_user_count(mau_count)
         
         response_text = f"""
 👤 <b>Your Profile</b>
@@ -540,6 +613,9 @@ def profile_command(message: Message):
 • Total Comments: {stats['total_comments']}
 • Impact Points: {stats['impact_points']}
 • Community Acceptance Score: {stats['acceptance_score']}%
+
+<b>Community:</b>
+• Monthly Active Users: {formatted_mau}
 
 Use /myconfessions to view your confessions.
 Use /mycomments to view your comments.
@@ -558,6 +634,9 @@ Use /mycomments to view your comments.
 @bot.message_handler(commands=['myconfessions'])
 def myconfessions_command(message: Message):
     """Handle /myconfessions command"""
+    # Track command interaction
+    track_command_interaction(message, 'myconfessions')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -605,6 +684,9 @@ def myconfessions_command(message: Message):
 @bot.message_handler(commands=['mycomments'])
 def mycomments_command(message: Message):
     """Handle /mycomments command"""
+    # Track command interaction
+    track_command_interaction(message, 'mycomments')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -649,6 +731,9 @@ def mycomments_command(message: Message):
 @bot.message_handler(commands=['confess'])
 def confess_command(message: Message):
     """Handle /confess command - start confession submission flow"""
+    # Track command interaction
+    track_command_interaction(message, 'confess')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -712,6 +797,9 @@ def is_admin(telegram_id):
 @bot.message_handler(commands=['pending'])
 def pending_command(message: Message):
     """Handle /pending command - view pending confessions (admin only)"""
+    # Track command interaction
+    track_command_interaction(message, 'pending')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -793,6 +881,9 @@ def pending_command(message: Message):
 @bot.message_handler(commands=['stats'])
 def stats_command(message: Message):
     """Handle /stats command - view system statistics (admin only)"""
+    # Track command interaction
+    track_command_interaction(message, 'stats')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -809,11 +900,17 @@ def stats_command(message: Message):
         rejected_confessions = Confession.objects.filter(status='rejected').count()
         total_comments = Comment.objects.count()
         
+        # Get monthly active users count
+        from bot.services.analytics_service import AnalyticsService
+        mau_count = AnalyticsService.get_monthly_active_users_count()
+        formatted_mau = AnalyticsService.format_user_count(mau_count)
+        
         response_text = f"""
 📊 <b>System Statistics</b>
 
 <b>Users:</b>
 • Total Registered Users: {total_users}
+• Monthly Active Users: {formatted_mau} ({mau_count})
 
 <b>Confessions:</b>
 • Total Confessions: {total_confessions}
@@ -840,6 +937,9 @@ def stats_command(message: Message):
 @bot.message_handler(commands=['delete'])
 def delete_command(message: Message):
     """Handle /delete command - delete a confession by ID (admin only)"""
+    # Track command interaction
+    track_command_interaction(message, 'delete')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -896,6 +996,9 @@ Confession ID {confession_id} has been deleted from the database.
 @bot.message_handler(commands=['viewfeedback'])
 def view_feedback_command(message: Message):
     """Handle /viewfeedback command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'viewfeedback')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1078,6 +1181,9 @@ def send_feedback_with_buttons(bot, chat_id, feedback):
 @bot.message_handler(commands=['feedback'])
 def view_single_feedback_command(message: Message):
     """Handle /feedback <id> command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'feedback')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1110,6 +1216,9 @@ def view_single_feedback_command(message: Message):
 @bot.message_handler(commands=['resolvefeedback'])
 def resolve_feedback_command(message: Message):
     """Handle /resolvefeedback <id> command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'resolvefeedback')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1156,6 +1265,9 @@ def resolve_feedback_command(message: Message):
 @bot.message_handler(commands=['addnote'])
 def add_feedback_note_command(message: Message):
     """Handle /addnote <id> <note> command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'addnote')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1214,6 +1326,9 @@ def add_feedback_note_command(message: Message):
 @bot.message_handler(commands=['categorize'])
 def categorize_feedback_command(message: Message):
     """Handle /categorize <id> <category> command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'categorize')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1289,6 +1404,9 @@ def categorize_feedback_command(message: Message):
 @bot.message_handler(commands=['priority'])
 def set_feedback_priority_command(message: Message):
     """Handle /priority <id> <level> command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'priority')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1360,6 +1478,9 @@ def set_feedback_priority_command(message: Message):
 @bot.message_handler(commands=['feedbackstats'])
 def feedback_stats_command(message: Message):
     """Handle /feedbackstats command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'feedbackstats')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1407,6 +1528,9 @@ def feedback_stats_command(message: Message):
 @bot.message_handler(commands=['feedbackhelp'])
 def feedback_help_command(message: Message):
     """Handle /feedbackhelp command - admin only"""
+    # Track command interaction
+    track_command_interaction(message, 'feedbackhelp')
+    
     telegram_id = message.from_user.id
     if not is_admin(telegram_id):
         bot.reply_to(message, "❌ This command is only available to administrators.")
@@ -1450,6 +1574,9 @@ def feedback_help_command(message: Message):
 @bot.message_handler(commands=['comment'])
 def comment_command(message: Message):
     """Handle /comment command - add a comment to a confession"""
+    # Track command interaction
+    track_command_interaction(message, 'comment')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -1514,6 +1641,9 @@ Type /cancel to cancel.
 @bot.message_handler(commands=['comments'])
 def comments_command(message: Message):
     """Handle /comments command - view comments for a confession"""
+    # Track command interaction
+    track_command_interaction(message, 'comments')
+    
     try:
         telegram_id = message.from_user.id
         
@@ -1584,6 +1714,9 @@ def comments_command(message: Message):
 @bot.message_handler(commands=['cancel'])
 def cancel_command(message: Message):
     """Handle /cancel command - cancel current operation"""
+    # Track command interaction
+    track_command_interaction(message, 'cancel')
+    
     telegram_id = message.from_user.id
     
     if telegram_id in user_states:
@@ -1610,12 +1743,17 @@ def cancel_command(message: Message):
 @bot.message_handler(func=lambda message: message.text == "✍️ Confess")
 def button_confess(message: Message):
     """Handle Confess button"""
+    # Track button interaction
+    track_button_interaction(type('obj', (object,), {'from_user': message.from_user})(), 'confess')
     confess_command(message)
 
 
 @bot.message_handler(func=lambda message: message.text == "👤 Profile")
 def button_profile(message: Message):
     """Handle Profile button - show profile menu"""
+    # Track button interaction
+    track_button_interaction(type('obj', (object,), {'from_user': message.from_user})(), 'profile')
+    
     telegram_id = message.from_user.id
     
     # Check if user is registered
@@ -1665,12 +1803,17 @@ Use the buttons below to manage your profile:
 @bot.message_handler(func=lambda message: message.text == "ℹ️ Help")
 def button_help(message: Message):
     """Handle Help button"""
+    # Track button interaction
+    track_button_interaction(type('obj', (object,), {'from_user': message.from_user})(), 'help')
     help_command(message)
 
 
 @bot.message_handler(func=lambda message: message.text == "🔙 Back to Menu")
 def button_back_to_menu(message: Message):
     """Handle Back to Menu button"""
+    # Track button interaction
+    track_button_interaction(type('obj', (object,), {'from_user': message.from_user})(), 'back_to_menu')
+    
     # Show main menu
     keyboard = ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     keyboard.add(
@@ -1685,18 +1828,25 @@ def button_back_to_menu(message: Message):
 @bot.message_handler(func=lambda message: message.text == "📝 My Confessions")
 def button_my_confessions(message: Message):
     """Handle My Confessions button"""
+    # Track button interaction
+    track_button_interaction(type('obj', (object,), {'from_user': message.from_user})(), 'my_confessions')
     myconfessions_command(message)
 
 
 @bot.message_handler(func=lambda message: message.text == "💬 My Comments")
 def button_my_comments(message: Message):
     """Handle My Comments button"""
+    # Track button interaction
+    track_button_interaction(type('obj', (object,), {'from_user': message.from_user})(), 'my_comments')
     mycomments_command(message)
 
 
 @bot.message_handler(func=lambda message: message.text == "🎭 Toggle Anonymity")
 def button_toggle_anonymity(message: Message):
     """Handle Toggle Anonymity button"""
+    # Track button interaction
+    track_button_interaction(type('obj', (object,), {'from_user': message.from_user})(), 'toggle_anonymity')
+    
     telegram_id = message.from_user.id
     
     try:
@@ -1730,6 +1880,9 @@ Your future confessions will be posted {'anonymously without your name' if new_s
 @bot.callback_query_handler(func=lambda call: call.data.startswith('confirm_confession_'))
 def handle_confession_confirmation(call: CallbackQuery):
     """Handle confession confirmation callback"""
+    # Track button interaction
+    track_button_interaction(call, 'confirm_confession')
+    
     try:
         telegram_id = call.from_user.id
         action = call.data.split('_')[2]  # 'yes' or 'no'
@@ -1864,6 +2017,9 @@ You will be notified once it's reviewed.
 @bot.callback_query_handler(func=lambda call: call.data.startswith('approve_'))
 def handle_approve_confession(call: CallbackQuery):
     """Handle approve button callback for admin moderation"""
+    # Track button interaction
+    track_button_interaction(call, 'approve_confession')
+    
     try:
         telegram_id = call.from_user.id
         logger.info(f"Approve button clicked by user {telegram_id}")
@@ -1989,6 +2145,9 @@ def handle_approve_confession(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reject_'))
 def handle_reject_confession(call: CallbackQuery):
     """Handle reject button callback for admin moderation"""
+    # Track button interaction
+    track_button_interaction(call, 'reject_confession')
+    
     try:
         telegram_id = call.from_user.id
         logger.info(f"Reject button clicked by user {telegram_id}")
@@ -2114,6 +2273,9 @@ def handle_reject_confession(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('view_comments_'))
 def handle_view_comments_wrapper(call: CallbackQuery):
     """Handle 'View / Add Comments' button - delegates to handlers module"""
+    # Track button interaction
+    track_button_interaction(call, 'view_comments')
+    
     from bot.handlers.comment_handlers import handle_view_comments
     handle_view_comments(bot, call)
 
@@ -2121,12 +2283,18 @@ def handle_view_comments_wrapper(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('comments_page_'))
 def handle_comments_pagination_wrapper(call: CallbackQuery):
     """Handle pagination button callbacks - delegates to handlers module"""
+    # Track button interaction
+    track_button_interaction(call, 'comments_page')
+    
     from bot.handlers.comment_handlers import handle_comments_pagination
     handle_comments_pagination(bot, call)
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('add_comment_'))
 def handle_add_comment_button(call: CallbackQuery):
     """Handle 'Add Comment' button callback"""
+    # Track button interaction
+    track_button_interaction(call, 'add_comment')
+    
     try:
         telegram_id = call.from_user.id
         
@@ -2187,6 +2355,9 @@ Type /cancel to cancel.
 @bot.callback_query_handler(func=lambda call: call.data.startswith('like_comment_'))
 def handle_like_comment(call: CallbackQuery):
     """Handle like button callback for comments"""
+    # Track button interaction
+    track_button_interaction(call, 'like_comment')
+    
     try:
         telegram_id = call.from_user.id
         
@@ -2242,6 +2413,9 @@ def handle_like_comment(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('dislike_comment_'))
 def handle_dislike_comment(call: CallbackQuery):
     """Handle dislike button callback for comments"""
+    # Track button interaction
+    track_button_interaction(call, 'dislike_comment')
+    
     try:
         telegram_id = call.from_user.id
         
@@ -2297,6 +2471,9 @@ def handle_dislike_comment(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('report_comment_'))
 def handle_report_comment(call: CallbackQuery):
     """Handle report button callback for comments"""
+    # Track button interaction
+    track_button_interaction(call, 'report_comment')
+    
     try:
         telegram_id = call.from_user.id
         
@@ -2380,6 +2557,9 @@ Please review this comment.
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reply_comment_'))
 def handle_reply_comment(call: CallbackQuery):
     """Handle reply button callback for comments"""
+    # Track button interaction
+    track_button_interaction(call, 'reply_comment')
+    
     try:
         telegram_id = call.from_user.id
         
@@ -2438,6 +2618,9 @@ Type /cancel to cancel.
 @bot.callback_query_handler(func=lambda call: call.data == "send_feedback")
 def handle_send_feedback(call: CallbackQuery):
     """Handle feedback button click"""
+    # Track button interaction
+    track_button_interaction(call, 'send_feedback')
+    
     telegram_id = call.from_user.id
     try:
         # Get or create user
@@ -2474,6 +2657,9 @@ def handle_send_feedback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data == "back_to_main")
 def handle_back_to_main(call: CallbackQuery):
     """Handle back to main menu button"""
+    # Track button interaction
+    track_button_interaction(call, 'back_to_main')
+    
     telegram_id = call.from_user.id
     
     # Clear any pending state
@@ -2508,6 +2694,9 @@ def handle_back_to_main(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('resolve_feedback_'))
 def handle_resolve_feedback_button(call: CallbackQuery):
     """Handle resolve feedback button"""
+    # Track button interaction
+    track_button_interaction(call, 'resolve_feedback')
+    
     logger.info(f"Resolve feedback button clicked: {call.data}")
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
@@ -2552,6 +2741,9 @@ def handle_resolve_feedback_button(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('review_feedback_'))
 def handle_review_feedback_button(call: CallbackQuery):
     """Handle mark as reviewed button"""
+    # Track button interaction
+    track_button_interaction(call, 'review_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2594,6 +2786,9 @@ def handle_review_feedback_button(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('pending_feedback_'))
 def handle_pending_feedback_button(call: CallbackQuery):
     """Handle mark as pending button"""
+    # Track button interaction
+    track_button_interaction(call, 'pending_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2628,6 +2823,9 @@ def handle_pending_feedback_button(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('reopen_feedback_'))
 def handle_reopen_feedback_button(call: CallbackQuery):
     """Handle reopen feedback button"""
+    # Track button interaction
+    track_button_interaction(call, 'reopen_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2668,6 +2866,9 @@ def handle_reopen_feedback_button(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('add_note_feedback_'))
 def handle_add_note_feedback_button(call: CallbackQuery):
     """Handle add note button - starts conversation for note input"""
+    # Track button interaction
+    track_button_interaction(call, 'add_note_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2698,6 +2899,9 @@ def handle_add_note_feedback_button(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('categorize_feedback_'))
 def handle_categorize_feedback_button(call: CallbackQuery):
     """Handle categorize button - shows category selection"""
+    # Track button interaction
+    track_button_interaction(call, 'categorize_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2744,6 +2948,9 @@ def handle_categorize_feedback_button(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('priority_feedback_'))
 def handle_priority_feedback_button(call: CallbackQuery):
     """Handle priority button - shows priority selection"""
+    # Track button interaction
+    track_button_interaction(call, 'priority_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2785,6 +2992,9 @@ def handle_priority_feedback_button(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('cat_'))
 def handle_category_selection(call: CallbackQuery):
     """Handle category selection"""
+    # Track button interaction
+    track_button_interaction(call, 'category_selection')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2844,6 +3054,9 @@ def handle_category_selection(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('pri_'))
 def handle_priority_selection(call: CallbackQuery):
     """Handle priority selection"""
+    # Track button interaction
+    track_button_interaction(call, 'priority_selection')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2902,6 +3115,9 @@ def handle_priority_selection(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('back_feedback_'))
 def handle_back_to_feedback(call: CallbackQuery):
     """Handle back button - return to feedback view"""
+    # Track button interaction
+    track_button_interaction(call, 'back_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -2932,6 +3148,9 @@ def handle_back_to_feedback(call: CallbackQuery):
 @bot.callback_query_handler(func=lambda call: call.data.startswith('details_feedback_'))
 def handle_feedback_details(call: CallbackQuery):
     """Handle view details button"""
+    # Track button interaction
+    track_button_interaction(call, 'details_feedback')
+    
     telegram_id = call.from_user.id
     if not is_admin(telegram_id):
         bot.answer_callback_query(call.id, "❌ Admin access required.")
@@ -3000,6 +3219,9 @@ def handle_unknown_callback(call: CallbackQuery):
 def handle_unknown_command(message: Message):
     """Handle unknown commands and messages"""
     telegram_id = message.from_user.id
+    
+    # Track message interaction for all messages
+    track_message_interaction(message)
     
     # Clean expired states periodically
     clean_expired_user_states()

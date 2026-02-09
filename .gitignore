@@ -3,3 +3,27 @@ __pycache__/
 *.env
 
 *.sqlite3
+
+# Hypothesis test artifacts
+.hypothesis/
+
+# Summary and documentation files (keep only README.md and LICENSE)
+*_SUMMARY.md
+*_FIX.md
+*_FEATURE.md
+*_DEBUG.md
+*_GUIDE.md
+*_CHECKLIST.md
+*_STEPS.md
+*_REPORT.md
+*_AUDIT.md
+*_ANALYSIS.md
+*_STATS.md
+*_INSTRUCTIONS.md
+*_IMPLEMENTATION.md
+*_SYSTEM.md
+*_IMPROVEMENT.md
+*_UPDATE.md
+*_APPRECIATION.md
+*_MANAGEMENT.md
+*_TROUBLESHOOTING.md

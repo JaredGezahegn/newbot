@@ -1,6 +1,6 @@
 # Generated migration to change Reaction unique_together constraint
 
-from django.db import migrations
+from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
@@ -13,9 +13,5 @@ class Migration(migrations.Migration):
         migrations.AlterUniqueTogether(
             name='reaction',
             unique_together={('comment', 'user', 'reaction_type')},
-        ),
-        migrations.AlterIndexTogether(
-            name='reaction',
-            index_together={('comment', 'user', 'reaction_type')},
         ),
     ]

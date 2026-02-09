@@ -15,6 +15,9 @@ This document specifies the requirements for an Anonymous Confession Bot system 
 - **Anonymity Mode**: A user setting that determines default attribution for confessions
 - **Pending State**: The status of a confession awaiting admin review
 - **Community Acceptance Score**: A metric derived from likes, dislikes, and reports on user content
+- **Row Level Security (RLS)**: A PostgreSQL security feature that restricts which rows users can access in database tables
+- **Service Role**: The authenticated database role used by the Django application to access the database
+- **Anonymous User**: An unauthenticated database role that should be denied direct access to application tables
 
 ## Requirements
 
@@ -109,7 +112,23 @@ This document specifies the requirements for an Anonymous Confession Bot system 
 5. WHEN a database transaction fails, THE System SHALL roll back the transaction and log the error
 6. WHEN the System deploys on Vercel, THE System SHALL run all pending database migrations automatically via the build script
 
-### Requirement 8: Error Handling and User Feedback
+### Requirement 8: Database Security and Access Control
+
+**User Story:** As a system administrator, I want all database tables to have proper Row Level Security (RLS) enabled, so that unauthorized direct database access is prevented and data is protected from security vulnerabilities.
+
+#### Acceptance Criteria
+
+1. WHEN the System creates any database table, THE System SHALL enable Row Level Security (RLS) on that table
+2. WHEN RLS is enabled on a table, THE System SHALL create policies that allow full access for the authenticated service role
+3. WHEN RLS is enabled on a table, THE System SHALL create policies that deny direct public access to anonymous users
+4. WHEN the bot_feedback table exists, THE System SHALL have RLS enabled with appropriate access policies
+5. WHEN the bot_user table exists, THE System SHALL have RLS enabled with appropriate access policies
+6. WHEN the bot_confession table exists, THE System SHALL have RLS enabled with appropriate access policies
+7. WHEN the bot_comment table exists, THE System SHALL have RLS enabled with appropriate access policies
+8. WHEN the bot_reaction table exists, THE System SHALL have RLS enabled with appropriate access policies
+9. WHEN Django system tables exist, THE System SHALL have RLS enabled with appropriate access policies
+
+### Requirement 9: Error Handling and User Feedback
 
 **User Story:** As a user, I want to receive clear feedback when I interact with the bot, so that I understand the results of my actions and can correct any errors.
 

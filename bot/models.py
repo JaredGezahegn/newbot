@@ -104,3 +104,29 @@ class Feedback(models.Model):
             models.Index(fields=['created_at']),
         ]
         ordering = ['-created_at']
+
+
+class UserInteraction(models.Model):
+    """
+    Privacy-preserving user interaction tracking model.
+    
+    This model stores ONLY the minimum necessary metadata for analytics:
+    - user: Foreign key reference (no direct PII storage)
+    - interaction_type: Category of interaction (metadata only)
+    - timestamp: When the interaction occurred
+    
+    Privacy considerations:
+    - Does NOT store message content, user names, or any PII
+    - Only stores interaction metadata for aggregate analytics
+    - Subject to data retention policies (default: 90 days)
+    - Used only for anonymous aggregate reporting
+    """
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='interactions')
+    interaction_type = models.CharField(max_length=50)
+    timestamp = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        indexes = [
+            models.Index(fields=['user', 'timestamp']),
+            models.Index(fields=['timestamp']),
+        ]

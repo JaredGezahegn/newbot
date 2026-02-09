@@ -127,3 +127,16 @@ STATIC_URL = "/static/"
 STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
 
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
+
+# -----------------------------
+# 🔥 BOT DESCRIPTION CONFIGURATION
+# -----------------------------
+# Configuration for automatic bot description updates with monthly active users count
+BOT_DESCRIPTION_CONFIG = {
+    'enabled': False,  # Set to True to enable automatic description updates
+    'description_template': 'Anonymous Confession Bot - {count} monthly active users',
+    'update_interval': 3600,  # Minimum seconds between updates (1 hour)
+    'retry_attempts': 3,  # Number of retry attempts on failure
+    'retry_delay': 60,  # Seconds to wait between retries
+}
+
