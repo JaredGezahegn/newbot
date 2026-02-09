@@ -84,6 +84,51 @@ class AnalyticsService:
             return 0
     
     @staticmethod
+    def get_total_registered_users_count():
+        """
+        Get the total count of all registered users.
+        
+        Returns the total number of users in the database.
+        Uses caching with 1-hour timeout for efficiency.
+        
+        Returns:
+            int: Total number of registered users
+        """
+        cache_key = 'total_registered_users_count'
+        
+        # Check cache first
+        cached_count = None
+        try:
+            cached_count = cache.get(cache_key)
+            if cached_count is not None:
+                logger.info(f"Returning cached total users count: {cached_count}")
+                return cached_count
+        except Exception as e:
+            logger.warning(f"Cache get failed, falling back to database: {e}")
+        
+        try:
+            # Get total count of all users
+            total_count = User.objects.count()
+            
+            # Try to cache the result for 1 hour
+            try:
+                cache.set(cache_key, total_count, AnalyticsService.CACHE_TIMEOUT)
+            except Exception as cache_error:
+                logger.warning(f"Cache set failed: {cache_error}")
+            
+            logger.info(f"Calculated total users count: {total_count}")
+            return total_count
+            
+        except Exception as e:
+            logger.error(f"Error calculating total registered users: {e}", exc_info=True)
+            # If we have a cached value from earlier, return it
+            if cached_count is not None:
+                logger.info(f"Returning stale cached value due to database error: {cached_count}")
+                return cached_count
+            # Return a fallback count
+            return 0
+    
+    @staticmethod
     def format_user_count(count):
         """
         Format user count for display.
@@ -390,15 +435,21 @@ class AnalyticsService:
                     'count': 0
                 }
         
-        # Get the monthly active users count
+        # Get the user count based on config
         try:
-            mau_count = AnalyticsService.get_monthly_active_users_count()
-            formatted_count = AnalyticsService.format_user_count(mau_count)
+            count_type = config.get('count_type', 'monthly_active_users')
+            
+            if count_type == 'total_users':
+                user_count = AnalyticsService.get_total_registered_users_count()
+            else:  # default to monthly_active_users
+                user_count = AnalyticsService.get_monthly_active_users_count()
+            
+            formatted_count = AnalyticsService.format_user_count(user_count)
         except Exception as e:
-            logger.error(f"Error getting MAU count for description update: {e}", exc_info=True)
+            logger.error(f"Error getting user count for description update: {e}", exc_info=True)
             return {
                 'success': False,
-                'message': 'Failed to retrieve monthly active users count',
+                'message': 'Failed to retrieve user count',
                 'count': 0,
                 'error': str(e)
             }
@@ -445,8 +496,8 @@ class AnalyticsService:
                 logger.info(f"Successfully updated bot description with MAU count: {formatted_count}")
                 return {
                     'success': True,
-                    'message': f'Bot description updated successfully with {formatted_count} monthly active users',
-                    'count': mau_count
+                    'message': f'Bot description updated successfully with {formatted_count} users',
+                    'count': user_count
                 }
                 
             except Exception as e:
@@ -484,7 +535,7 @@ class AnalyticsService:
                     return {
                         'success': False,
                         'message': f'Failed to update bot description after {retry_attempts} attempts',
-                        'count': mau_count,
+                        'count': user_count,
                         'error': error_msg
                     }
         
@@ -492,7 +543,7 @@ class AnalyticsService:
         return {
             'success': False,
             'message': 'Unknown error during bot description update',
-            'count': mau_count
+            'count': user_count
         }
     
     @staticmethod
