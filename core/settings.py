@@ -133,7 +133,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # -----------------------------
 # Configuration for automatic bot description updates with monthly active users count
 BOT_DESCRIPTION_CONFIG = {
-    'enabled': False,  # Set to True to enable automatic description updates
+    'enabled': True,  # Set to True to enable automatic description updates
     'description_template': 'Anonymous Confession Bot - {count} monthly active users',
     'update_interval': 3600,  # Minimum seconds between updates (1 hour)
     'retry_attempts': 3,  # Number of retry attempts on failure
