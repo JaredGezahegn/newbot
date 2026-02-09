@@ -360,17 +360,17 @@ def start_command(message: Message):
             logger.error(f"Error handling deep link: {e}", exc_info=True)
             # Fall through to normal start message
     
-    # Get monthly active users count
+    # Get total registered users count
     from bot.services.analytics_service import AnalyticsService
-    mau_count = AnalyticsService.get_monthly_active_users_count()
-    formatted_mau = AnalyticsService.format_user_count(mau_count)
+    total_users = AnalyticsService.get_total_registered_users_count()
+    formatted_users = AnalyticsService.format_user_count(total_users)
     
     welcome_text = f"""
 👋 <b>Hello {user_name}!</b>
 
 Welcome to the Anonymous Confession Bot!
 
-<b>Community:</b> {formatted_mau} monthly active users
+<b>Community:</b> {formatted_users} monthly active users
 
 Use the buttons below to interact with the bot, or type /help for more information.
     """
@@ -392,15 +392,15 @@ def help_command(message: Message):
     # Track command interaction
     track_command_interaction(message, 'help')
     
-    # Get monthly active users count
+    # Get total registered users count
     from bot.services.analytics_service import AnalyticsService
-    mau_count = AnalyticsService.get_monthly_active_users_count()
-    formatted_mau = AnalyticsService.format_user_count(mau_count)
+    total_users = AnalyticsService.get_total_registered_users_count()
+    formatted_users = AnalyticsService.format_user_count(total_users)
     
     help_text = f"""
 <b>📚 Help Menu</b>
 
-<b>Community:</b> {formatted_mau} monthly active users
+<b>Community:</b> {formatted_users} monthly active users
 
 <b>Main Buttons:</b>
 • ✍️ Confess - Submit a new confession
@@ -596,10 +596,10 @@ def profile_command(message: Message):
         # Get user stats
         stats = get_user_stats(user)
         
-        # Get monthly active users count
+        # Get total registered users count
         from bot.services.analytics_service import AnalyticsService
-        mau_count = AnalyticsService.get_monthly_active_users_count()
-        formatted_mau = AnalyticsService.format_user_count(mau_count)
+        total_users = AnalyticsService.get_total_registered_users_count()
+        formatted_users = AnalyticsService.format_user_count(total_users)
         
         response_text = f"""
 👤 <b>Your Profile</b>
@@ -615,7 +615,7 @@ def profile_command(message: Message):
 • Community Acceptance Score: {stats['acceptance_score']}%
 
 <b>Community:</b>
-• Monthly Active Users: {formatted_mau}
+• Monthly Active Users: {formatted_users}
 
 Use /myconfessions to view your confessions.
 Use /mycomments to view your comments.
