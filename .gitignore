@@ -4,6 +4,10 @@ __pycache__/
 
 *.sqlite3
 
+.pytest_cache
+.hypothesis
+.kiro
+
 # Hypothesis test artifacts
 .hypothesis/
 
@@ -27,3 +31,7 @@ __pycache__/
 *_APPRECIATION.md
 *_MANAGEMENT.md
 *_TROUBLESHOOTING.md
+
+# Log files
+logs/
+*.log
