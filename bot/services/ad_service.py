@@ -1,5 +1,6 @@
 """
 Ad service for broadcasting advertisements to all bot users.
+Supports resumable broadcast for serverless environments (Vercel).
 """
 import html as html_module
 import logging
@@ -9,65 +10,83 @@ from bot.models import Ad, User
 
 logger = logging.getLogger(__name__)
 
+# Leave 2s buffer before Vercel's 10s limit
+VERCEL_SAFE_SECONDS = 7
+
 
 def create_ad(admin_user, text):
     """
     Create a draft ad.
-
-    Args:
-        admin_user: User instance (must be admin)
-        text: Ad message text (max 4096 characters)
-
-    Returns:
-        Ad: The created Ad instance
 
     Raises:
         ValueError: If text exceeds 4096 characters
     """
     if len(text) > 4096:
         raise ValueError(f"Ad text exceeds maximum length of 4096 characters (current: {len(text)})")
-
     return Ad.objects.create(created_by=admin_user, text=text, status='draft')
 
 
 def broadcast_ad(ad, bot_instance):
     """
     Send an ad to all registered bot users (excluding the sender).
-    Respects Telegram's rate limit of ~30 messages/second.
-
-    Args:
-        ad: Ad instance (should be in 'draft' status)
-        bot_instance: TeleBot instance
+    Saves progress so it can be resumed if the serverless function times out.
 
     Returns:
-        dict: {'sent': int, 'failed': int}
+        dict: {'sent': int, 'failed': int, 'done': bool}
+              done=False means there are still users left (call again to resume)
     """
-    sender_id = ad.created_by_id  # exclude the admin who created the ad
-    users = list(User.objects.exclude(id=sender_id).values_list('telegram_id', flat=True))
+    start_time = time.time()
 
-    sent = 0
-    failed = 0
+    sender_id = ad.created_by_id
+
+    # Resume from where we left off
+    qs = User.objects.exclude(id=sender_id).order_by('id')
+    if ad.last_sent_user_id:
+        qs = qs.filter(id__gt=ad.last_sent_user_id)
+
+    # Mark as sending on first run
+    if ad.status == 'draft':
+        ad.status = 'sending'
+        ad.save(update_fields=['status'])
 
     message_text = f"📢 <b>Announcement</b>\n\n{html_module.escape(ad.text)}"
 
-    for i, telegram_id in enumerate(users):
+    sent = ad.total_recipients
+    failed = ad.failed_count
+    last_user_id = ad.last_sent_user_id
+    done = True
+
+    for user in qs.iterator():
+        # Check if we're approaching the time limit
+        if time.time() - start_time > VERCEL_SAFE_SECONDS:
+            done = False
+            break
+
         try:
-            bot_instance.send_message(telegram_id, message_text, parse_mode='HTML')
+            bot_instance.send_message(user.telegram_id, message_text, parse_mode='HTML')
             sent += 1
         except Exception as e:
-            logger.warning(f"Failed to send ad to user {telegram_id}: {e}")
+            logger.warning(f"Failed to send ad to user {user.telegram_id}: {e}")
             failed += 1
 
-        # Respect Telegram rate limit: max ~30 msg/sec
-        # Sleep every 25 messages to stay safely under the limit
-        if (i + 1) % 25 == 0:
+        last_user_id = user.id
+
+        # Respect Telegram rate limit: ~30 msg/sec, sleep every 25
+        if (sent + failed) % 25 == 0:
             time.sleep(1)
 
-    ad.status = 'sent'
-    ad.sent_at = timezone.now()
+    # Save progress
+    update_fields = ['total_recipients', 'failed_count', 'last_sent_user_id']
     ad.total_recipients = sent
     ad.failed_count = failed
-    ad.save(update_fields=['status', 'sent_at', 'total_recipients', 'failed_count'])
+    ad.last_sent_user_id = last_user_id
 
-    logger.info(f"Ad #{ad.id} broadcast complete: {sent} sent, {failed} failed")
-    return {'sent': sent, 'failed': failed}
+    if done:
+        ad.status = 'sent'
+        ad.sent_at = timezone.now()
+        update_fields += ['status', 'sent_at']
+
+    ad.save(update_fields=update_fields)
+
+    logger.info(f"Ad #{ad.id} batch: sent={sent}, failed={failed}, done={done}")
+    return {'sent': sent, 'failed': failed, 'done': done}

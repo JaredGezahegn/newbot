@@ -112,6 +112,7 @@ class Ad(models.Model):
     """
     STATUS_CHOICES = [
         ('draft', 'Draft'),
+        ('sending', 'Sending'),
         ('sent', 'Sent'),
     ]
 
@@ -121,6 +122,7 @@ class Ad(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     total_recipients = models.IntegerField(default=0)
     failed_count = models.IntegerField(default=0)
+    last_sent_user_id = models.BigIntegerField(null=True, blank=True)  # for resumable broadcast
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

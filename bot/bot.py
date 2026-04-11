@@ -1027,28 +1027,97 @@ def broadcast_confirm_callback(call: CallbackQuery):
         ad = Ad.objects.get(id=ad_id, status='draft')
 
         bot.edit_message_text(
-            "⏳ Broadcasting... please wait.",
+            "⏳ Broadcasting... please wait.\n\n<i>This may take a while for large user bases. You'll receive a summary when done.</i>",
             chat_id=call.message.chat.id,
-            message_id=call.message.message_id
+            message_id=call.message.message_id,
+            parse_mode='HTML'
         )
         bot.answer_callback_query(call.id, "Sending...")
 
         result = broadcast_ad(ad, bot)
 
-        bot.send_message(
-            telegram_id,
-            f"✅ <b>Broadcast Complete</b>\n\n"
-            f"📨 Sent: <b>{result['sent']}</b>\n"
-            f"❌ Failed: <b>{result['failed']}</b>",
-            parse_mode='HTML'
-        )
+        if result['done']:
+            bot.send_message(
+                telegram_id,
+                f"✅ <b>Broadcast Complete</b>\n\n"
+                f"📨 Sent: <b>{result['sent']}</b>\n"
+                f"❌ Failed (blocked/inactive): <b>{result['failed']}</b>",
+                parse_mode='HTML'
+            )
+        else:
+            bot.send_message(
+                telegram_id,
+                f"⏳ <b>Broadcast Paused</b> (server time limit)\n\n"
+                f"📨 Sent so far: <b>{result['sent']}</b>\n"
+                f"❌ Failed so far: <b>{result['failed']}</b>\n\n"
+                f"Run <code>/broadcastresume {ad_id}</code> to continue.",
+                parse_mode='HTML'
+            )
 
     except Ad.DoesNotExist:
         bot.answer_callback_query(call.id, "Ad not found or already sent.")
     except Exception as e:
-        error_text = handle_generic_error(e, "broadcasting ad")
-        bot.send_message(telegram_id, error_text)
-        bot.answer_callback_query(call.id, "Error occurred.")
+        logger.error(f"Broadcast confirm callback error for ad_id={ad_id}, user={telegram_id}: {e}", exc_info=True)
+        try:
+            bot.send_message(telegram_id, f"⚠️ Broadcast encountered an error: <code>{str(e)[:200]}</code>", parse_mode='HTML')
+        except Exception:
+            pass
+        try:
+            bot.answer_callback_query(call.id, "Error occurred.")
+        except Exception:
+            pass
+
+
+@bot.message_handler(commands=['broadcastresume'])
+def broadcast_resume_command(message: Message):
+    """Handle /broadcastresume <id> - resume a paused broadcast (admin only)"""
+    track_command_interaction(message, 'broadcastresume')
+
+    telegram_id = message.from_user.id
+
+    if not is_admin(telegram_id):
+        bot.reply_to(message, "❌ You don't have permission to use this command.")
+        return
+
+    parts = message.text.split(None, 1)
+    if len(parts) < 2 or not parts[1].strip().isdigit():
+        bot.reply_to(message, "Usage: <code>/broadcastresume &lt;ad_id&gt;</code>", parse_mode='HTML')
+        return
+
+    ad_id = int(parts[1].strip())
+
+    try:
+        from bot.models import Ad
+        from bot.services.ad_service import broadcast_ad
+
+        ad = Ad.objects.get(id=ad_id, status='sending')
+        bot.reply_to(message, f"⏳ Resuming broadcast #{ad_id}...")
+
+        result = broadcast_ad(ad, bot)
+
+        if result['done']:
+            bot.send_message(
+                telegram_id,
+                f"✅ <b>Broadcast Complete</b>\n\n"
+                f"📨 Total Sent: <b>{result['sent']}</b>\n"
+                f"❌ Total Failed: <b>{result['failed']}</b>",
+                parse_mode='HTML'
+            )
+        else:
+            bot.send_message(
+                telegram_id,
+                f"⏳ <b>Still in progress...</b>\n\n"
+                f"📨 Sent so far: <b>{result['sent']}</b>\n"
+                f"❌ Failed so far: <b>{result['failed']}</b>\n\n"
+                f"Run <code>/broadcastresume {ad_id}</code> again to continue.",
+                parse_mode='HTML'
+            )
+
+    except Ad.DoesNotExist:
+        bot.reply_to(message, f"❌ No active broadcast found with ID {ad_id}. It may already be complete.")
+    except Exception as e:
+        logger.error(f"Broadcast resume error for ad_id={ad_id}: {e}", exc_info=True)
+        bot.reply_to(message, f"⚠️ Error resuming broadcast: <code>{str(e)[:200]}</code>", parse_mode='HTML')
 
 
 @bot.message_handler(commands=['delete'])
