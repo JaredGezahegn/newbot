@@ -1,8 +1,12 @@
 import json
+import logging
+import traceback
 import telebot
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
+
+logger = logging.getLogger(__name__)
 
 # Lazy import bot to avoid initialization issues
 _bot_instance = None
@@ -26,18 +30,21 @@ def webhook(request, *args, **kwargs):
             return JsonResponse({"status": "ignored-empty"}, status=200)
 
         data = json.loads(raw_data)
-        
+
         # Log the update type for debugging
         update_type = "unknown"
         if "message" in data:
             update_type = "message"
+            msg_text = data["message"].get("text", "")
+            logger.info(f"Webhook message: {msg_text[:80]!r}")
         elif "callback_query" in data:
             update_type = "callback_query"
-            print(f"Callback query data: {data.get('callback_query', {}).get('data', 'N/A')}")
+            cb_data = data["callback_query"].get("data", "N/A")
+            logger.info(f"Webhook callback_query data: {cb_data!r}")
         elif "edited_message" in data:
             update_type = "edited_message"
-        
-        print(f"Webhook received update type: {update_type}")
+
+        logger.info(f"Webhook received update type: {update_type}")
 
         update = telebot.types.Update.de_json(data)
 
@@ -48,9 +55,7 @@ def webhook(request, *args, **kwargs):
 
     except Exception as e:
         # Never return 400 to Telegram — it will disable your webhook
-        print("Webhook error:", e)
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Webhook error: {e}\n{traceback.format_exc()}")
         return JsonResponse({"status": "ok"}, status=200)
 
 
