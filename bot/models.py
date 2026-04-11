@@ -106,6 +106,30 @@ class Feedback(models.Model):
         ordering = ['-created_at']
 
 
+class Ad(models.Model):
+    """
+    Represents a broadcast advertisement sent to all bot users.
+    """
+    STATUS_CHOICES = [
+        ('draft', 'Draft'),
+        ('sent', 'Sent'),
+    ]
+
+    created_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='ads')
+    text = models.TextField(max_length=4096)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='draft')
+    sent_at = models.DateTimeField(null=True, blank=True)
+    total_recipients = models.IntegerField(default=0)
+    failed_count = models.IntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Ad #{self.id} by {self.created_by} ({self.status})"
+
+
 class UserInteraction(models.Model):
     """
     Privacy-preserving user interaction tracking model.
