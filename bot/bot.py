@@ -983,9 +983,11 @@ def broadcast_command(message: Message):
             f"{html_module.escape(ad_text)}\n\n"
             f"<i>This will be sent to <b>{total_users}</b> users. Confirm?</i>"
         )
+        logger.info(f"Broadcast preview created: ad_id={ad.id}, recipients={total_users}")
         bot.reply_to(message, preview, parse_mode='HTML', reply_markup=keyboard)
 
     except Exception as e:
+        logger.error(f"Broadcast command failed for user {telegram_id}: {e}", exc_info=True)
         error_text = handle_generic_error(e, "creating broadcast ad")
         bot.reply_to(message, error_text)
 
