@@ -1045,13 +1045,16 @@ def broadcast_confirm_callback(call: CallbackQuery):
                 parse_mode='HTML'
             )
         else:
+            resume_keyboard = InlineKeyboardMarkup()
+            resume_keyboard.add(InlineKeyboardButton("▶️ Resume Broadcast", callback_data=f"broadcast_resume_{ad_id}"))
             bot.send_message(
                 telegram_id,
                 f"⏳ <b>Broadcast Paused</b> (server time limit)\n\n"
                 f"📨 Sent so far: <b>{result['sent']}</b>\n"
                 f"❌ Failed so far: <b>{result['failed']}</b>\n\n"
-                f"Run <code>/broadcastresume {ad_id}</code> to continue.",
-                parse_mode='HTML'
+                f"<i>Click the button below to continue.</i>",
+                parse_mode='HTML',
+                reply_markup=resume_keyboard
             )
 
     except Ad.DoesNotExist:
@@ -1104,13 +1107,16 @@ def broadcast_resume_command(message: Message):
                 parse_mode='HTML'
             )
         else:
+            resume_keyboard = InlineKeyboardMarkup()
+            resume_keyboard.add(InlineKeyboardButton("▶️ Resume Broadcast", callback_data=f"broadcast_resume_{ad_id}"))
             bot.send_message(
                 telegram_id,
                 f"⏳ <b>Still in progress...</b>\n\n"
                 f"📨 Sent so far: <b>{result['sent']}</b>\n"
                 f"❌ Failed so far: <b>{result['failed']}</b>\n\n"
-                f"Run <code>/broadcastresume {ad_id}</code> again to continue.",
-                parse_mode='HTML'
+                f"<i>Click the button below to continue.</i>",
+                parse_mode='HTML',
+                reply_markup=resume_keyboard
             )
 
     except Ad.DoesNotExist:
@@ -1118,6 +1124,64 @@ def broadcast_resume_command(message: Message):
     except Exception as e:
         logger.error(f"Broadcast resume error for ad_id={ad_id}: {e}", exc_info=True)
         bot.reply_to(message, f"⚠️ Error resuming broadcast: <code>{str(e)[:200]}</code>", parse_mode='HTML')
+
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith('broadcast_resume_'))
+def broadcast_resume_callback(call: CallbackQuery):
+    """Handle the Resume Broadcast button"""
+    track_button_interaction(call, 'broadcast_resume')
+
+    telegram_id = call.from_user.id
+
+    if not is_admin(telegram_id):
+        bot.answer_callback_query(call.id, "❌ Not authorized.")
+        return
+
+    ad_id = int(call.data.split('broadcast_resume_')[1])
+
+    try:
+        from bot.models import Ad
+        from bot.services.ad_service import broadcast_ad
+
+        ad = Ad.objects.get(id=ad_id, status='sending')
+
+        # Disable the button while running
+        bot.edit_message_reply_markup(
+            chat_id=call.message.chat.id,
+            message_id=call.message.message_id,
+            reply_markup=None
+        )
+        bot.answer_callback_query(call.id, "Resuming...")
+
+        result = broadcast_ad(ad, bot)
+
+        if result['done']:
+            bot.send_message(
+                telegram_id,
+                f"✅ <b>Broadcast Complete</b>\n\n"
+                f"📨 Total Sent: <b>{result['sent']}</b>\n"
+                f"❌ Total Failed: <b>{result['failed']}</b>",
+                parse_mode='HTML'
+            )
+        else:
+            resume_keyboard = InlineKeyboardMarkup()
+            resume_keyboard.add(InlineKeyboardButton("▶️ Resume Broadcast", callback_data=f"broadcast_resume_{ad_id}"))
+            bot.send_message(
+                telegram_id,
+                f"⏳ <b>Still in progress...</b>\n\n"
+                f"📨 Sent so far: <b>{result['sent']}</b>\n"
+                f"❌ Failed so far: <b>{result['failed']}</b>\n\n"
+                f"<i>Click the button below to continue.</i>",
+                parse_mode='HTML',
+                reply_markup=resume_keyboard
+            )
+
+    except Ad.DoesNotExist:
+        bot.answer_callback_query(call.id, "Broadcast already complete or not found.")
+    except Exception as e:
+        logger.error(f"Broadcast resume callback error for ad_id={ad_id}: {e}", exc_info=True)
+        bot.send_message(telegram_id, f"⚠️ Error resuming broadcast: <code>{str(e)[:200]}</code>", parse_mode='HTML')
+        bot.answer_callback_query(call.id, "Error occurred.")
 
 
 @bot.message_handler(commands=['delete'])
