@@ -936,7 +936,10 @@ def stats_command(message: Message):
 
 @bot.message_handler(commands=['broadcast'])
 def broadcast_command(message: Message):
-    """Handle /broadcast command - start ad broadcast flow (admin only)"""
+    """Handle /broadcast command - send ad to all users (admin only)
+    
+    Usage: /broadcast <ad text>
+    """
     track_command_interaction(message, 'broadcast')
 
     telegram_id = message.from_user.id
@@ -945,12 +948,46 @@ def broadcast_command(message: Message):
         bot.reply_to(message, "❌ You don't have permission to use this command.")
         return
 
-    set_user_state(telegram_id, 'waiting_broadcast_text')
-    bot.reply_to(
-        message,
-        "📢 <b>Broadcast Ad</b>\n\nPlease type the ad message you want to send to all users.\n\nSend /cancel to abort.",
-        parse_mode='HTML'
-    )
+    # Extract text after /broadcast
+    parts = message.text.split(None, 1)
+    if len(parts) < 2 or not parts[1].strip():
+        bot.reply_to(
+            message,
+            "📢 <b>Broadcast Ad</b>\n\nUsage: <code>/broadcast your ad message here</code>\n\nExample:\n<code>/broadcast 🎉 New feature available! Check it out.</code>",
+            parse_mode='HTML'
+        )
+        return
+
+    ad_text = parts[1].strip()
+
+    if len(ad_text) > 4096:
+        bot.reply_to(message, "❌ Ad text is too long. Please keep it under 4096 characters.")
+        return
+
+    try:
+        from bot.services.ad_service import create_ad
+        user = User.objects.get(telegram_id=telegram_id)
+        ad = create_ad(user, ad_text)
+
+        total_users = User.objects.exclude(id=user.id).count()
+
+        import html as html_module
+        keyboard = InlineKeyboardMarkup()
+        keyboard.row(
+            InlineKeyboardButton("✅ Send to all users", callback_data=f"broadcast_confirm_{ad.id}"),
+            InlineKeyboardButton("❌ Cancel", callback_data=f"broadcast_cancel_{ad.id}")
+        )
+
+        preview = (
+            f"📢 <b>Ad Preview</b>\n\n"
+            f"{html_module.escape(ad_text)}\n\n"
+            f"<i>This will be sent to <b>{total_users}</b> users. Confirm?</i>"
+        )
+        bot.reply_to(message, preview, parse_mode='HTML', reply_markup=keyboard)
+
+    except Exception as e:
+        error_text = handle_generic_error(e, "creating broadcast ad")
+        bot.reply_to(message, error_text)
 
 
 @bot.callback_query_handler(func=lambda call: call.data.startswith('broadcast_confirm_') or call.data.startswith('broadcast_cancel_'))
@@ -992,6 +1029,7 @@ def broadcast_confirm_callback(call: CallbackQuery):
             chat_id=call.message.chat.id,
             message_id=call.message.message_id
         )
+        bot.answer_callback_query(call.id, "Sending...")
 
         result = broadcast_ad(ad, bot)
 
@@ -1002,7 +1040,6 @@ def broadcast_confirm_callback(call: CallbackQuery):
             f"❌ Failed: <b>{result['failed']}</b>",
             parse_mode='HTML'
         )
-        bot.answer_callback_query(call.id, "Broadcast sent!")
 
     except Ad.DoesNotExist:
         bot.answer_callback_query(call.id, "Ad not found or already sent.")
@@ -1811,8 +1848,6 @@ def cancel_command(message: Message):
             bot.reply_to(message, "❌ Reply submission cancelled.")
         elif state == 'waiting_feedback_note':
             bot.reply_to(message, "❌ Note addition cancelled.")
-        elif state == 'waiting_broadcast_text':
-            bot.reply_to(message, "❌ Broadcast cancelled.")
         else:
             bot.reply_to(message, "✅ Operation cancelled.")
     else:
@@ -3464,56 +3499,6 @@ Do you want to submit this confession?
             
             return
         
-        elif state == 'waiting_broadcast_text':
-            # Admin is composing a broadcast ad
-            if not is_admin(telegram_id):
-                del user_states[telegram_id]
-                bot.reply_to(message, "❌ Not authorized.")
-                return
-
-            if not message.text:
-                bot.reply_to(message, "❌ Please send a text message for the ad.")
-                return
-
-            ad_text = message.text.strip()
-
-            if not ad_text:
-                bot.reply_to(message, "❌ Ad message cannot be empty.")
-                return
-
-            if len(ad_text) > 4096:
-                bot.reply_to(message, "❌ Ad text is too long. Please keep it under 4096 characters.")
-                return
-
-            try:
-                from bot.services.ad_service import create_ad
-                import html as html_module
-                user = User.objects.get(telegram_id=telegram_id)
-                ad = create_ad(user, ad_text)
-
-                total_users = User.objects.count()
-
-                keyboard = InlineKeyboardMarkup()
-                keyboard.row(
-                    InlineKeyboardButton("✅ Send to all users", callback_data=f"broadcast_confirm_{ad.id}"),
-                    InlineKeyboardButton("❌ Cancel", callback_data=f"broadcast_cancel_{ad.id}")
-                )
-
-                preview = (
-                    f"📢 <b>Ad Preview</b>\n\n"
-                    f"{html_module.escape(ad_text)}\n\n"
-                    f"<i>This will be sent to <b>{total_users}</b> users. Confirm?</i>"
-                )
-                bot.reply_to(message, preview, parse_mode='HTML', reply_markup=keyboard)
-                del user_states[telegram_id]
-
-            except Exception as e:
-                error_text = handle_generic_error(e, "creating broadcast ad")
-                bot.reply_to(message, error_text)
-                del user_states[telegram_id]
-
-            return
-
         elif state == 'waiting_feedback_text':
             # User is submitting feedback text
             feedback_text = message.text.strip()
@@ -3760,8 +3745,7 @@ Use /comments {confession_id} to view all comments on this confession.
                 'waiting_comment_text': "💬 Please type your comment text, or use /cancel to stop.",
                 'waiting_reply_text': "↩️ Please type your reply text, or use /cancel to stop.",
                 'waiting_feedback_text': "📝 Please type your feedback text, or use /cancel to stop.",
-                'waiting_feedback_note': "📝 Please type your admin note, or use /cancel to stop.",
-                'waiting_broadcast_text': "📢 Please type your broadcast ad text, or use /cancel to stop."
+                'waiting_feedback_note': "📝 Please type your admin note, or use /cancel to stop."
             }
             
             guidance = state_guidance.get(state, "Please complete your current action or use /cancel to stop.")

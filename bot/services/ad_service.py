@@ -3,6 +3,7 @@ Ad service for broadcasting advertisements to all bot users.
 """
 import html as html_module
 import logging
+import time
 from django.utils import timezone
 from bot.models import Ad, User
 
@@ -32,6 +33,7 @@ def create_ad(admin_user, text):
 def broadcast_ad(ad, bot_instance):
     """
     Send an ad to all registered bot users (excluding the sender).
+    Respects Telegram's rate limit of ~30 messages/second.
 
     Args:
         ad: Ad instance (should be in 'draft' status)
@@ -41,20 +43,25 @@ def broadcast_ad(ad, bot_instance):
         dict: {'sent': int, 'failed': int}
     """
     sender_id = ad.created_by_id  # exclude the admin who created the ad
-    users = User.objects.exclude(id=sender_id).values_list('telegram_id', flat=True)
+    users = list(User.objects.exclude(id=sender_id).values_list('telegram_id', flat=True))
 
     sent = 0
     failed = 0
 
     message_text = f"📢 <b>Announcement</b>\n\n{html_module.escape(ad.text)}"
 
-    for telegram_id in users:
+    for i, telegram_id in enumerate(users):
         try:
             bot_instance.send_message(telegram_id, message_text, parse_mode='HTML')
             sent += 1
         except Exception as e:
             logger.warning(f"Failed to send ad to user {telegram_id}: {e}")
             failed += 1
+
+        # Respect Telegram rate limit: max ~30 msg/sec
+        # Sleep every 25 messages to stay safely under the limit
+        if (i + 1) % 25 == 0:
+            time.sleep(1)
 
     ad.status = 'sent'
     ad.sent_at = timezone.now()
