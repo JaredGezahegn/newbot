@@ -160,6 +160,24 @@ FOR ALL
 TO anon
 USING (false);
 
+-- Table: bot_feedback (Feedback system table)
+ALTER TABLE public.bot_feedback ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Service role has full access to bot_feedback" ON public.bot_feedback;
+CREATE POLICY "Service role has full access to bot_feedback" 
+ON public.bot_feedback
+FOR ALL
+TO authenticated
+USING (true)
+WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Public has no access to bot_feedback" ON public.bot_feedback;
+CREATE POLICY "Public has no access to bot_feedback" 
+ON public.bot_feedback
+FOR ALL
+TO anon
+USING (false);
+
 -- ============================================================================
 -- Verification Query
 -- ============================================================================
@@ -176,6 +194,7 @@ USING (false);
 --     'bot_confession', 
 --     'bot_comment', 
 --     'bot_reaction',
+--     'bot_feedback',
 --     'django_session',
 --     'django_admin_log',
 --     'bot_user_groups',

@@ -23,6 +23,7 @@ def check_rls_status():
         'bot_confession',
         'bot_comment',
         'bot_reaction',
+        'bot_feedback',
         'django_session',
         'django_admin_log',
         'bot_user_groups',
